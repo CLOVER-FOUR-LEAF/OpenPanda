@@ -10,6 +10,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/Xustalis/OpenPanda/internal/config"
 	"github.com/Xustalis/OpenPanda/internal/memory"
@@ -160,6 +161,77 @@ func TestPutMemoryTopicCRUDAndTraversal(t *testing.T) {
 	h.ServeHTTP(rr, authedReq(http.MethodPut, "/api/memory/topics/big", strings.NewReader(big)))
 	if rr.Code != http.StatusBadRequest {
 		t.Fatalf("over-limit topic status = %d, want 400", rr.Code)
+	}
+}
+
+func TestDeleteMemoryDaily(t *testing.T) {
+	h, cfg := newMemoryPanel(t)
+
+	dailyDir := filepath.Join(cfg.Storage.MemoryPath, "daily")
+	if err := os.MkdirAll(dailyDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dailyDir, "2026-10-01.md"), []byte("- 10:00:00 log"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	// DELETE removes it; deleting again is a 404.
+	if code, _ := doJSON(t, h, authedReq(http.MethodDelete, "/api/memory/daily/2026-10-01", nil)); code != http.StatusOK {
+		t.Fatalf("delete status = %d", code)
+	}
+	if code, _ := doJSON(t, h, authedReq(http.MethodDelete, "/api/memory/daily/2026-10-01", nil)); code != http.StatusNotFound {
+		t.Fatalf("second delete status = %d, want 404", code)
+	}
+
+	// Traversal names must never resolve outside daily/.
+	for _, evil := range []string{
+		"/api/memory/daily/..%2Fevil",
+		"/api/memory/daily/..%2F..%2Fevil",
+		"/api/memory/daily/%2e%2e",
+	} {
+		rr := httptest.NewRecorder()
+		h.ServeHTTP(rr, authedReq(http.MethodDelete, evil, nil))
+		if rr.Code == http.StatusOK {
+			t.Fatalf("traversal delete %s accepted", evil)
+		}
+	}
+	if _, err := os.Stat(filepath.Join(cfg.Storage.MemoryPath, "..", "evil.md")); !os.IsNotExist(err) {
+		t.Fatalf("evil.md deleted outside daily/: %v", err)
+	}
+
+	// The archive directory is not a daily file — deleting "archive" 404s.
+	if err := os.MkdirAll(filepath.Join(dailyDir, "archive"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if code, _ := doJSON(t, h, authedReq(http.MethodDelete, "/api/memory/daily/archive", nil)); code != http.StatusNotFound {
+		t.Fatalf("archive delete status = %d, want 404", code)
+	}
+}
+
+func TestPruneMemoryDaily(t *testing.T) {
+	h, cfg := newMemoryPanel(t)
+
+	dailyDir := filepath.Join(cfg.Storage.MemoryPath, "daily")
+	if err := os.MkdirAll(dailyDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	old := time.Now().AddDate(0, 0, -100).Format("2006-01-02") + ".md"
+	recent := time.Now().Format("2006-01-02") + ".md"
+	for _, name := range []string{old, recent} {
+		if err := os.WriteFile(filepath.Join(dailyDir, name), []byte("log"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	code, out := doJSON(t, h, authedReq(http.MethodPost, "/api/memory/daily/prune", nil))
+	if code != http.StatusOK || out["status"] != "pruned" {
+		t.Fatalf("prune status = %d out = %v", code, out)
+	}
+	if _, err := os.Stat(filepath.Join(dailyDir, old)); !os.IsNotExist(err) {
+		t.Errorf("expired daily should be deleted: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(dailyDir, recent)); err != nil {
+		t.Errorf("recent daily should remain: %v", err)
 	}
 }
 

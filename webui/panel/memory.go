@@ -271,6 +271,55 @@ func (h *handler) deleteMemoryTopic(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, map[string]any{"topic": name, "status": "deleted"})
 }
 
+// deleteMemoryDaily serves DELETE /api/memory/daily/{name} — removes one
+// warm-layer diary file (daily/<name>.md). The name must be a single path
+// segment (ValidateName + withinDir, same traversal guard as topics) and the
+// target must be a regular file: the archive/ directory can never be deleted
+// through this route. A missing file is a 404 so the console can tell a stale
+// list from a removal.
+func (h *handler) deleteMemoryDaily(w http.ResponseWriter, r *http.Request) {
+	if h.cfg == nil {
+		writeErr(w, http.StatusServiceUnavailable, errNoMemoryConfig)
+		return
+	}
+	name := r.PathValue("name")
+	if err := memory.ValidateName(name); err != nil {
+		writeErr(w, http.StatusBadRequest, errors.New("invalid daily name"))
+		return
+	}
+	dir := h.memoryHermes().WarmDir()
+	path := filepath.Join(dir, name+".md")
+	if !withinDir(dir, path) {
+		writeErr(w, http.StatusBadRequest, errors.New("invalid daily name"))
+		return
+	}
+	if info, err := os.Stat(path); err != nil || info.IsDir() {
+		writeErr(w, http.StatusNotFound, errors.New("no such daily file"))
+		return
+	}
+	if err := os.Remove(path); err != nil {
+		writeErr(w, http.StatusInternalServerError, err)
+		return
+	}
+	writeJSON(w, map[string]any{"daily": name, "status": "deleted"})
+}
+
+// pruneMemoryDaily serves POST /api/memory/daily/prune — applies the diary
+// retention windows (30d archive, 90d delete, archive swept too) immediately
+// instead of waiting for the Dreaming scheduler's next sweep.
+func (h *handler) pruneMemoryDaily(w http.ResponseWriter, r *http.Request) {
+	if h.cfg == nil {
+		writeErr(w, http.StatusServiceUnavailable, errNoMemoryConfig)
+		return
+	}
+	d := memory.NewDaily(h.memoryHermes().WarmDir())
+	if err := d.Prune(time.Now()); err != nil {
+		writeErr(w, http.StatusInternalServerError, err)
+		return
+	}
+	writeJSON(w, map[string]any{"status": "pruned"})
+}
+
 // putProjectMemory serves PUT /api/projects/{name}/memory — the user edits a
 // project's MEMORY.md wholesale (A3 web integration). Reuses the Projects
 // store so the configured project cap, name validation (no traversal) and

@@ -1099,6 +1099,16 @@ export const api = {
     return request('DELETE', `/api/memory/topics/${encodeURIComponent(name)}`)
   },
 
+  /** Remove one daily/<name>.md warm-layer diary file. */
+  deleteMemoryDaily(name: string): Promise<{ daily: string; status: string }> {
+    return request('DELETE', `/api/memory/daily/${encodeURIComponent(name)}`)
+  },
+
+  /** Apply the diary retention windows (30d archive / 90d delete) right now. */
+  pruneMemoryDaily(): Promise<{ status: string }> {
+    return request('POST', '/api/memory/daily/prune')
+  },
+
   /** One project's MEMORY.md (§ entries) with its configured cap. */
   projectMemory(name: string): Promise<ProjectMemory> {
     return request('GET', `/api/projects/${encodeURIComponent(name)}/memory`)
@@ -1541,12 +1551,14 @@ export interface MemoryFiles {
 
 /** GET /api/memory/graph — nodes are memory surfaces and skills; edges are
  *  provenance ([from:…] promotions out of the daily diary) or literal name
- *  mentions between surfaces. */
+ *  mentions between surfaces, weighted by their evidence count. */
 export interface MemoryGraphNode {
   id: string
   kind: 'core' | 'topic' | 'project' | 'daily' | 'skill' | string
   label: string
   chars?: number
+  entries?: number // §-entry count (entry-shaped surfaces)
+  files?: number // diary node: daily-log count
   status?: string
 }
 
@@ -1554,6 +1566,7 @@ export interface MemoryGraphEdge {
   from: string
   to: string
   kind: 'promotion' | 'reference' | string
+  weight?: number // evidence count: promotion markers / name mentions
 }
 
 export interface MemoryGraph {

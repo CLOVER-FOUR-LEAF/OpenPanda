@@ -94,6 +94,34 @@ func TestConversationRetrievesByQuery(t *testing.T) {
 	}
 }
 
+func TestRankRareTokenOutranksCommon(t *testing.T) {
+	// IDF: a token shared by every entry carries almost no signal. All entries
+	// mention "服务器", but only one mentions "openwrt" — a query hitting both
+	// must rank the rare-term entry first even though every entry overlaps.
+	entries := []string{
+		"服务器 机架 位置",
+		"服务器 电源 冗余",
+		"服务器 openwrt 固件",
+	}
+	got := Retriever{}.Rank("服务器 openwrt", entries, 3)
+	if len(got) == 0 || got[0] != "服务器 openwrt 固件" {
+		t.Fatalf("rank = %v, want the rare openwrt entry first", got)
+	}
+}
+
+func TestRankLengthNormalization(t *testing.T) {
+	// BM25 b: a short entry that matches the query beats a padded long entry
+	// with the same match count — length alone must not buy rank.
+	entries := []string{
+		"部署 发布 回滚 监控 告警 日志 追踪 指标 debian",
+		"debian",
+	}
+	got := Retriever{}.Rank("debian", entries, 2)
+	if len(got) == 0 || got[0] != "debian" {
+		t.Fatalf("rank = %v, want the focused short entry first", got)
+	}
+}
+
 func TestRankTopKBoundary(t *testing.T) {
 	// Six relevant entries, k=5: exactly the top five must come back, so the
 	// boundary does not over- or under-return.

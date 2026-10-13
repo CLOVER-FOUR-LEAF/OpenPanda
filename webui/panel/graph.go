@@ -36,6 +36,11 @@ type graphNodeJSON struct {
 	Label string `json:"label"`
 	// Chars is the surface size — the view scales the node with it.
 	Chars int `json:"chars,omitempty"`
+	// Entries is the §-entry count on entry-shaped surfaces (user/memory,
+	// topics, projects). DREAMS.md is prose and leaves it unset.
+	Entries int `json:"entries,omitempty"`
+	// Files is the daily-log count on the aggregated diary node.
+	Files int `json:"files,omitempty"`
 	// Status carries skill approval state (pending skills render dimmed).
 	Status string `json:"status,omitempty"`
 }
@@ -44,6 +49,10 @@ type graphEdgeJSON struct {
 	From string `json:"from"`
 	To   string `json:"to"`
 	Kind string `json:"kind"` // promotion | reference
+	// Weight is the evidence count behind the edge — promotion markers
+	// written into the target, or name mentions in the source — so the view
+	// can render stronger links heavier. Capped, never zero.
+	Weight int `json:"weight,omitempty"`
 }
 
 // graphText is one readable surface's (id, name-in-text, content) triple the
@@ -72,20 +81,31 @@ func (h *handler) getMemoryGraph(w http.ResponseWriter, r *http.Request) {
 	type candidate struct{ id, name string }
 	var candidates []candidate
 
-	addCore := func(id, label, path string) {
+	addCore := func(id, label, path string, countEntries bool) {
 		content := readFileCapped(filepath.Join(root, path))
-		nodes = append(nodes, graphNodeJSON{ID: id, Kind: "core", Label: label, Chars: len([]rune(content))})
+		n := graphNodeJSON{ID: id, Kind: "core", Label: label, Chars: len([]rune(content))}
+		if countEntries {
+			n.Entries = len(memory.ParseMem([]byte(content)).Entries)
+		}
+		nodes = append(nodes, n)
 		texts = append(texts, graphText{id: id, content: content})
+		// Core filenames ("USER.md") are distinctive mentions — a surface
+		// naming one earns an honest reference edge like any other.
+		candidates = append(candidates, candidate{id: id, name: label})
 	}
-	addCore("core:user", "USER.md", "USER.md")
-	addCore("core:memory", "MEMORY.md", "MEMORY.md")
-	addCore("core:dreams", "DREAMS.md", "DREAMS.md")
+	addCore("core:user", "USER.md", "USER.md", true)
+	addCore("core:memory", "MEMORY.md", "MEMORY.md", true)
+	addCore("core:dreams", "DREAMS.md", "DREAMS.md", false)
 
 	if names, err := hermes.ListTopics(); err == nil {
 		for _, name := range names {
 			content := readFileCapped(filepath.Join(hermes.TopicsDir(), name+".md"))
 			id := "topic:" + name
-			nodes = append(nodes, graphNodeJSON{ID: id, Kind: "topic", Label: name, Chars: len([]rune(content))})
+			nodes = append(nodes, graphNodeJSON{
+				ID: id, Kind: "topic", Label: name,
+				Chars:   len([]rune(content)),
+				Entries: len(memory.ParseMem([]byte(content)).Entries),
+			})
 			texts = append(texts, graphText{id: id, content: content})
 			candidates = append(candidates, candidate{id: id, name: name})
 		}
@@ -103,7 +123,7 @@ func (h *handler) getMemoryGraph(w http.ResponseWriter, r *http.Request) {
 			diary.WriteString("\n")
 			chars += len([]rune(d.Content))
 		}
-		nodes = append(nodes, graphNodeJSON{ID: "daily", Kind: "daily", Label: "daily", Chars: chars})
+		nodes = append(nodes, graphNodeJSON{ID: "daily", Kind: "daily", Label: "daily", Chars: chars, Files: len(daily)})
 		texts = append(texts, graphText{id: "daily", content: diary.String()})
 	}
 
@@ -115,7 +135,7 @@ func (h *handler) getMemoryGraph(w http.ResponseWriter, r *http.Request) {
 					continue
 				}
 				id := "project:" + name
-				nodes = append(nodes, graphNodeJSON{ID: id, Kind: "project", Label: name, Chars: mf.Chars()})
+				nodes = append(nodes, graphNodeJSON{ID: id, Kind: "project", Label: name, Chars: mf.Chars(), Entries: len(mf.Entries)})
 				texts = append(texts, graphText{id: id, content: string(mf.Bytes())})
 				candidates = append(candidates, candidate{id: id, name: name})
 			}
@@ -130,29 +150,34 @@ func (h *handler) getMemoryGraph(w http.ResponseWriter, r *http.Request) {
 					ID: id, Kind: "skill", Label: e.Name, Status: string(e.Status),
 				})
 				candidates = append(candidates, candidate{id: id, name: e.Name})
+				// A skill's own name+description is a text surface too: a skill
+				// describing work on a topic or project earns the same honest
+				// reference edge a memory file would.
+				texts = append(texts, graphText{id: id, content: e.Name + " " + e.Description})
 			}
 		}
 	}
 
-	// Edges. Promotion markers and name mentions; both dedup'd by (from,to,kind).
+	// Edges. Promotion markers and name mentions; both dedup'd by (from,to,kind)
+	// and carrying their evidence count as weight.
 	edgeSet := map[string]graphEdgeJSON{}
-	addEdge := func(from, to, kind string) {
+	addEdge := func(from, to, kind string, weight int) {
 		if from == to {
 			return
 		}
-		edgeSet[from+"\x00"+to+"\x00"+kind] = graphEdgeJSON{From: from, To: to, Kind: kind}
+		edgeSet[from+"\x00"+to+"\x00"+kind] = graphEdgeJSON{From: from, To: to, Kind: kind, Weight: weight}
 	}
 	for _, g := range texts {
-		if strings.Contains(g.content, memory.PromotionSourceTag) {
-			addEdge("daily", g.id, "promotion")
+		if n := strings.Count(g.content, memory.PromotionSourceTag); n > 0 {
+			addEdge("daily", g.id, "promotion", n)
 		}
 		lower := strings.ToLower(g.content)
 		for _, cand := range candidates {
 			if cand.id == g.id || !mentionable(cand.name) {
 				continue
 			}
-			if mentionsName(lower, strings.ToLower(cand.name)) {
-				addEdge(g.id, cand.id, "reference")
+			if n := countMentions(lower, strings.ToLower(cand.name), mentionCap); n > 0 {
+				addEdge(g.id, cand.id, "reference", n)
 			}
 		}
 	}
@@ -161,14 +186,23 @@ func (h *handler) getMemoryGraph(w http.ResponseWriter, r *http.Request) {
 	for _, e := range edgeSet {
 		edges = append(edges, e)
 	}
+	// Full (from,to,kind) sort: map iteration order is random, so without the
+	// kind tiebreak two edges between the same pair could swap per request.
 	sort.Slice(edges, func(i, j int) bool {
 		if edges[i].From != edges[j].From {
 			return edges[i].From < edges[j].From
 		}
-		return edges[i].To < edges[j].To
+		if edges[i].To != edges[j].To {
+			return edges[i].To < edges[j].To
+		}
+		return edges[i].Kind < edges[j].Kind
 	})
 	writeJSON(w, map[string]any{"nodes": nodes, "edges": edges})
 }
+
+// mentionCap bounds the evidence count riding on one reference edge — plenty
+// to tell a stray mention from a recurring one without long scans.
+const mentionCap = 50
 
 // mentionable reports whether a name is worth scanning for — single/double
 // character names mention-match too aggressively to be honest edges.
@@ -176,26 +210,32 @@ func mentionable(name string) bool {
 	return len([]rune(name)) >= 3
 }
 
-// mentionsName reports whether content names candidate: a case-insensitive
-// substring match that for ASCII names also requires non-alphanumeric
-// boundaries, so "go" inside "golang" never links. CJK names match plainly
-// (Han script has no word-boundary convention).
+// mentionsName reports whether content names candidate (see countMentions).
 func mentionsName(content, name string) bool {
-	idx := 0
-	for {
+	return countMentions(content, name, 1) > 0
+}
+
+// countMentions counts boundary-respecting mentions of name in content, up to
+// cap: a case-insensitive substring match that for ASCII names also requires
+// non-alphanumeric boundaries, so "go" inside "golang" never links. CJK names
+// match plainly (Han script has no word-boundary convention).
+func countMentions(content, name string, cap int) int {
+	idx, n := 0, 0
+	for n < cap {
 		i := strings.Index(content[idx:], name)
 		if i < 0 {
-			return false
+			return n
 		}
 		i += idx
 		beforeOK := i == 0 || !isASCIILetter(rune(content[i-1]))
 		end := i + len(name)
 		afterOK := end >= len(content) || !isASCIILetter(rune(content[end]))
 		if beforeOK && afterOK {
-			return true
+			n++
 		}
 		idx = i + 1
 	}
+	return n
 }
 
 func isASCIILetter(r rune) bool {

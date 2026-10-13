@@ -2541,6 +2541,43 @@
   margin-top: 10px;
 }
 
+.memory-search {
+  margin-bottom: 10px;
+}
+
+.memory-add-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 10px;
+}
+
+.memory-add-row .input {
+  flex: 1;
+}
+
+/* A file-list row with a trailing delete affordance (daily diary). */
+.memory-file-row {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.memory-file-row .memory-file-item {
+  flex: 1;
+  min-width: 0;
+}
+
+.memory-file-del {
+  padding: 2px 8px;
+  line-height: 1;
+  color: var(--text-dim);
+}
+
+.memory-file-del:hover {
+  color: var(--danger);
+}
+
 /* Badge for entries promoted out of the daily logs ([from:...] marker). */
 .badge.from-log {
   background: var(--semantic-warn-strong-soft);

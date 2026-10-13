@@ -92,9 +92,11 @@ func sanitizeEntry(entry string) string {
 
 // Prune enforces the retention windows at now: files older than deleteDays are
 // deleted, files older than archiveDays (but not yet deleteDays) are moved to
-// daily/archive/. Files that do not match the YYYY-MM-DD.md naming are left
-// untouched, as is the archive directory itself. It shares the Daily mutex with
-// Append so a prune cannot race an in-flight append.
+// daily/archive/. The delete window sweeps the archive too — archiving moves a
+// log out of the warm scan path, it does not exempt it from deletion, or
+// archive/ would grow without bound. Files that do not match the YYYY-MM-DD.md
+// naming are left untouched. It shares the Daily mutex with Append so a prune
+// cannot race an in-flight append.
 func (d *Daily) Prune(now time.Time) error {
 	d.mu.Lock()
 	defer d.mu.Unlock()
@@ -122,6 +124,34 @@ func (d *Daily) Prune(now time.Time) error {
 		case age >= dailyArchiveDays*24*time.Hour:
 			if err := d.archive(e.Name()); err != nil {
 				return err
+			}
+		}
+	}
+	return d.pruneArchive(now)
+}
+
+// pruneArchive deletes archived logs past the delete window. The archive is a
+// cooler shelf, not a retention exemption.
+func (d *Daily) pruneArchive(now time.Time) error {
+	dir := filepath.Join(d.dir, "archive")
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return nil
+		}
+		return fmt.Errorf("memory: read archive dir: %w", err)
+	}
+	for _, e := range entries {
+		if e.IsDir() {
+			continue
+		}
+		date, ok := parseDailyName(e.Name())
+		if !ok {
+			continue
+		}
+		if now.Sub(date) >= dailyDeleteDays*24*time.Hour {
+			if err := os.Remove(filepath.Join(dir, e.Name())); err != nil {
+				return fmt.Errorf("memory: delete archived daily %s: %w", e.Name(), err)
 			}
 		}
 	}

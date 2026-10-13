@@ -10,6 +10,7 @@ import {
 import { useLocaleRerender } from '../hooks'
 import { locale, localeNames, locales, setLocale, t, type Locale } from '../i18n'
 import { toast } from '../components/toast'
+import { TermsContent } from '../components/terms'
 import { useModalFocus } from '../components/modal-focus'
 
 // First-run onboarding: `panda web` boots zero-config — the panel is fully
@@ -238,14 +239,7 @@ function TermsStep() {
   return (
     <>
       <h2 class="modal-title">{t('onboarding.termsTitle')}</h2>
-      <div class="wizard-terms">
-        {([1, 2, 3, 4, 5, 6, 7, 8, 9, 10] as const).map((n) => (
-          <section key={n} class="wizard-terms-section">
-            <h3>{t(`onboarding.terms${n}h`)}</h3>
-            <p>{t(`onboarding.terms${n}b`)}</p>
-          </section>
-        ))}
-      </div>
+      <TermsContent />
     </>
   )
 }

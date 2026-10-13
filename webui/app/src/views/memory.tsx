@@ -112,7 +112,7 @@ export function MemoryView(props: { initialTab?: string }) {
       )}
       {tab === 'dreams' && <DreamsView content={data.dreams} reload={reload} />}
       {tab === 'topics' && <TopicsView topics={data.topics} limit={data.mem_limit} reload={reload} />}
-      {tab === 'daily' && <DailyView daily={data.daily} />}
+      {tab === 'daily' && <DailyView daily={data.daily} reload={reload} />}
       {tab === 'projects' && <ProjectsView defaultLimit={data.project_limit} reload={reload} />}
     </section>
   )
@@ -139,8 +139,6 @@ function MemoryFileView({
   const [editing, setEditing] = useState(false)
   const [draft, setDraft] = useState('')
   const [saving, setSaving] = useState(false)
-  const [entryFix, setEntryFix] = useState<number | null>(null)
-  const [entryDraft, setEntryDraft] = useState('')
 
   // Highlight: entries that were not present at the previous load glow once
   // so "what did the agent just learn" is answerable at a glance. The ref
@@ -190,24 +188,6 @@ function MemoryFileView({
     }
   }
 
-  async function deleteEntry(i: number) {
-    const ok = await confirmDialog({
-      title: t('memory.entryDeleteTitle'),
-      message: t('memory.entryDeleteMsg'),
-    })
-    if (!ok) return
-    const next = entries.filter((_, idx) => idx !== i)
-    await persistEntries(next)
-  }
-
-  async function saveEntryFix(i: number) {
-    const text = entryDraft.trim()
-    const next = entries.slice()
-    if (text === '') next.splice(i, 1)
-    else next[i] = text
-    if (await persistEntries(next)) setEntryFix(null)
-  }
-
   const chars = countChars(draft)
   const over = editing && limit > 0 && chars > limit
 
@@ -242,63 +222,7 @@ function MemoryFileView({
   return (
     <div class="card memory-card">
       {displayName && <h2 class="block-title file-title">{displayName}</h2>}
-      {entries.length === 0 ? (
-        <p class="dim">{t('memory.empty')}</p>
-      ) : (
-        <ul class="memory-entries">
-          {entries.map((e, i) => {
-            const fromLog = fromLogSource(e)
-            return (
-              <li key={i} class={`memory-entry${fresh.has(e) ? ' fresh' : ''}`} title={e}>
-                {entryFix === i ? (
-                  <>
-                    <textarea
-                      class="input memory-entry-editbox mono"
-                      rows={3}
-                      value={entryDraft}
-                      onInput={(ev) => setEntryDraft((ev.target as HTMLTextAreaElement).value)}
-                      spellcheck={false}
-                    />
-                    <span class="memory-entry-actions">
-                      <button class="btn small" onClick={() => setEntryFix(null)}>
-                        {t('common.cancel')}
-                      </button>
-                      <button class="btn small primary" onClick={() => saveEntryFix(i)}>
-                        {t('common.save')}
-                      </button>
-                    </span>
-                  </>
-                ) : (
-                  <>
-                    {e}
-                    {fromLog && (
-                      <span class="badge from-log" title={t('memory.fromLogTip')}>
-                        {t('memory.fromLog')}
-                      </span>
-                    )}
-                    {fromLog && (
-                      <span class="memory-entry-actions">
-                        <button
-                          class="btn small"
-                          onClick={() => {
-                            setEntryFix(i)
-                            setEntryDraft(e)
-                          }}
-                        >
-                          {t('memory.entryFix')}
-                        </button>
-                        <button class="btn small" onClick={() => deleteEntry(i)}>
-                          {t('memory.entryDelete')}
-                        </button>
-                      </span>
-                    )}
-                  </>
-                )}
-              </li>
-            )
-          })}
-        </ul>
-      )}
+      <EntryList entries={entries} fresh={fresh} persist={persistEntries} />
       <div class="memory-edit-row">
         <span class="dim memory-counter mono">
           {countChars(content)} / {limit}
@@ -308,6 +232,148 @@ function MemoryFileView({
         </button>
       </div>
     </div>
+  )
+}
+
+/** One §-entry list with filter, per-entry edit/delete and a quick-add row —
+ *  shared by the USER.md / MEMORY.md / topic / project surfaces so every list
+ *  offers the same powers. persist() rewrites the whole file (the backend's
+ *  only write shape) and resolves whether the save landed. Entries the
+ *  Dreamer promoted out of the daily logs keep their `[from:…]` badge. */
+function EntryList({
+  entries,
+  fresh,
+  persist,
+}: {
+  entries: string[]
+  fresh?: Set<string>
+  persist(next: string[]): Promise<boolean>
+}) {
+  const [query, setQuery] = useState('')
+  const [fixIdx, setFixIdx] = useState<number | null>(null)
+  const [fixDraft, setFixDraft] = useState('')
+  const [newEntry, setNewEntry] = useState('')
+  const [busy, setBusy] = useState(false)
+
+  const q = query.trim().toLowerCase()
+  const visible = entries
+    .map((e, i) => ({ e, i }))
+    .filter(({ e }) => q === '' || e.toLowerCase().includes(q))
+
+  async function remove(i: number) {
+    const ok = await confirmDialog({
+      title: t('memory.entryDeleteTitle'),
+      message: t('memory.entryDeleteMsg'),
+    })
+    if (!ok) return
+    await persist(entries.filter((_, idx) => idx !== i))
+  }
+
+  async function saveFix(i: number) {
+    const text = fixDraft.trim()
+    const next = entries.slice()
+    if (text === '') next.splice(i, 1)
+    else next[i] = text
+    if (await persist(next)) setFixIdx(null)
+  }
+
+  async function add() {
+    const text = newEntry.trim()
+    if (!text || busy) return
+    setBusy(true)
+    try {
+      if (await persist([...entries, text])) setNewEntry('')
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  return (
+    <>
+      {entries.length === 0 ? (
+        <p class="dim">{t('memory.empty')}</p>
+      ) : (
+        <>
+          <input
+            class="input memory-search"
+            type="search"
+            placeholder={t('memory.search')}
+            value={query}
+            onInput={(e) => setQuery((e.target as HTMLInputElement).value)}
+          />
+          {visible.length === 0 ? (
+            <p class="dim">{t('memory.noMatches')}</p>
+          ) : (
+            <ul class="memory-entries">
+              {visible.map(({ e, i }) => {
+                const fromLog = fromLogSource(e)
+                return (
+                  <li key={i} class={`memory-entry${fresh?.has(e) ? ' fresh' : ''}`} title={e}>
+                    {fixIdx === i ? (
+                      <>
+                        <textarea
+                          class="input memory-entry-editbox mono"
+                          rows={3}
+                          value={fixDraft}
+                          onInput={(ev) => setFixDraft((ev.target as HTMLTextAreaElement).value)}
+                          spellcheck={false}
+                        />
+                        <span class="memory-entry-actions">
+                          <button class="btn small" onClick={() => setFixIdx(null)}>
+                            {t('common.cancel')}
+                          </button>
+                          <button class="btn small primary" onClick={() => saveFix(i)}>
+                            {t('common.save')}
+                          </button>
+                        </span>
+                      </>
+                    ) : (
+                      <>
+                        {e}
+                        {fromLog && (
+                          <span class="badge from-log" title={t('memory.fromLogTip')}>
+                            {t('memory.fromLog')}
+                          </span>
+                        )}
+                        <span class="memory-entry-actions">
+                          <button
+                            class="btn small"
+                            onClick={() => {
+                              setFixIdx(i)
+                              setFixDraft(e)
+                            }}
+                          >
+                            {t('memory.edit')}
+                          </button>
+                          <button class="btn small" onClick={() => remove(i)}>
+                            {t('memory.entryDelete')}
+                          </button>
+                        </span>
+                      </>
+                    )}
+                  </li>
+                )
+              })}
+            </ul>
+          )}
+        </>
+      )}
+      <div class="memory-add-row">
+        <input
+          class="input"
+          type="text"
+          placeholder={t('memory.addPlaceholder')}
+          value={newEntry}
+          onInput={(e) => setNewEntry((e.target as HTMLInputElement).value)}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter') add()
+          }}
+        />
+        <button class="btn small" disabled={!newEntry.trim() || busy} onClick={add}>
+          {t('memory.add')}
+        </button>
+      </div>
+    </>
   )
 }
 
@@ -452,6 +518,20 @@ function TopicsView({ topics, limit, reload }: { topics: TopicFile[]; limit: num
     }
   }
 
+  /** Per-entry ops write the whole topic file back (same route as the editor). */
+  async function persistEntries(next: string[]) {
+    if (!current) return false
+    try {
+      await api.saveMemoryTopic(current.name, next.join('\n§\n'))
+      toast(t('memory.saved'), 'success')
+      reload()
+      return true
+    } catch (e) {
+      toastError(e)
+      return false
+    }
+  }
+
   const chars = countChars(draft)
   const over = editing && limit > 0 && chars > limit
 
@@ -521,17 +601,7 @@ function TopicsView({ topics, limit, reload }: { topics: TopicFile[]; limit: num
         ) : (
           <div class="card memory-card">
             <h2 class="block-title mono file-title">{current.name}</h2>
-            {parseEntries(current.content).length === 0 ? (
-              <p class="dim">{t('memory.empty')}</p>
-            ) : (
-              <ul class="memory-entries">
-                {parseEntries(current.content).map((e, i) => (
-                  <li key={i} class="memory-entry" title={e}>
-                    {e}
-                  </li>
-                ))}
-              </ul>
-            )}
+            <EntryList entries={parseEntries(current.content)} persist={persistEntries} />
             <div class="memory-edit-row">
               <span class="dim memory-counter mono">
                 {countChars(current.content)} / {limit}
@@ -556,10 +626,50 @@ function TopicsView({ topics, limit, reload }: { topics: TopicFile[]; limit: num
   )
 }
 
-/** daily/*.md — the warm-layer diary. Read-only browse, newest first. */
-function DailyView({ daily }: { daily: TopicFile[] }) {
+/** daily/*.md — the warm-layer diary. Content stays read-only (the Dreamer
+ *  owns the writes), but whole files can be deleted and the 30d-archive /
+ *  90d-delete retention windows can be applied on demand. Newest first. */
+function DailyView({ daily, reload }: { daily: TopicFile[]; reload(): void }) {
   const [selected, setSelected] = useState<string>('')
+  const [pruning, setPruning] = useState(false)
   const current = daily.find((d) => d.name === selected) ?? daily[0] ?? null
+
+  async function remove(name: string) {
+    const ok = await confirmDialog({
+      title: t('memory.dailyDeleteTitle'),
+      message: t('memory.dailyDeleteMsg', { name }),
+    })
+    if (!ok) return
+    try {
+      await api.deleteMemoryDaily(name)
+      toast(t('memory.dailyDeleted'), 'success')
+      if (current?.name === name) setSelected('')
+      reload()
+    } catch (e) {
+      toastError(e)
+    }
+  }
+
+  async function prune() {
+    if (pruning) return
+    const ok = await confirmDialog({
+      title: t('memory.dailyPruneTitle'),
+      message: t('memory.dailyPruneMsg'),
+      danger: false,
+      confirmLabel: t('memory.dailyPrune'),
+    })
+    if (!ok) return
+    setPruning(true)
+    try {
+      await api.pruneMemoryDaily()
+      toast(t('memory.dailyPruned'), 'success')
+      reload()
+    } catch (e) {
+      toastError(e)
+    } finally {
+      setPruning(false)
+    }
+  }
 
   return (
     <div class="memory-split">
@@ -569,16 +679,30 @@ function DailyView({ daily }: { daily: TopicFile[] }) {
         <ul class="memory-file-list">
           {daily.length === 0 && <li class="dim">{t('memory.dailyEmpty')}</li>}
           {daily.map((d) => (
-            <li key={d.name}>
+            <li key={d.name} class="memory-file-row">
               <button
                 class={`memory-file-item${current?.name === d.name ? ' active' : ''}`}
                 onClick={() => setSelected(d.name)}
               >
                 {d.name}
               </button>
+              <button
+                class="btn small memory-file-del"
+                title={t('memory.dailyDelete')}
+                aria-label={`${t('memory.dailyDelete')} ${d.name}`}
+                onClick={() => remove(d.name)}
+              >
+                ×
+              </button>
             </li>
           ))}
         </ul>
+        <div class="memory-topic-foot">
+          <button class="btn small" disabled={pruning || daily.length === 0} onClick={prune}>
+            {pruning ? t('memory.dailyPruning') : t('memory.dailyPrune')}
+          </button>
+        </div>
+        <p class="hint">{t('memory.dailyRetention')}</p>
       </div>
       <div class="card memory-card">
         {current ? (
@@ -640,6 +764,21 @@ function ProjectsView({ defaultLimit, reload }: { defaultLimit: number; reload()
       toastError(e)
     } finally {
       setSaving(false)
+    }
+  }
+
+  /** Per-entry ops write the whole project file back (same route as the editor). */
+  async function persistEntries(next: string[]) {
+    if (!selected) return false
+    try {
+      await api.saveProjectMemory(selected, next.join('\n§\n'))
+      toast(t('memory.saved'), 'success')
+      const re = await api.projectMemory(selected)
+      setMem(re)
+      return true
+    } catch (e) {
+      toastError(e)
+      return false
     }
   }
 
@@ -706,16 +845,8 @@ function ProjectsView({ defaultLimit, reload }: { defaultLimit: number; reload()
             <h2 class="block-title mono file-title">{selected}</h2>
             {!mem ? (
               <p class="dim">{t('common.loading')}</p>
-            ) : parseEntries(mem.content).length === 0 ? (
-              <p class="dim">{t('memory.empty')}</p>
             ) : (
-              <ul class="memory-entries">
-                {parseEntries(mem.content).map((e, i) => (
-                  <li key={i} class="memory-entry" title={e}>
-                    {e}
-                  </li>
-                ))}
-              </ul>
+              <EntryList entries={parseEntries(mem.content)} persist={persistEntries} />
             )}
             {mem && (
               <div class="memory-edit-row">
@@ -757,6 +888,9 @@ function GraphTab({ onOpenTab }: { onOpenTab(tab: Tab): void }) {
     } else if (n.kind === 'project') {
       onOpenTab('projects')
       navigate({ view: 'memory', tab: 'projects' })
+    } else if (n.kind === 'daily') {
+      onOpenTab('daily')
+      navigate({ view: 'memory', tab: 'daily' })
     } else if (n.kind === 'skill') {
       navigate({ view: 'skills' })
     }
