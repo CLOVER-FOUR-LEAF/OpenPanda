@@ -67,7 +67,10 @@ func downloadRelease(ctx context.Context, repo, version, destDir, releaseKey str
 		return "", errors.New("no update release key configured: refusing an unverifiable release (set OPENPANDA_UPDATE_PUBKEY to verify signatures, or OPENPANDA_UPDATE_UNSIGNED=1 to accept checksum-only verification)")
 	}
 	base := githubDownloadBase + "/" + repo + "/releases/download/v" + version
-	name := AssetName(version)
+	name, err := AssetName(version)
+	if err != nil {
+		return "", err
+	}
 
 	checksumsURL := base + "/checksums.txt"
 	sums, err := fetchText(ctx, checksumsURL)

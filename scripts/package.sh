@@ -32,6 +32,10 @@
 #                              holding the private half (e.g. signing happens
 #                              on another machine); ignored when _KEY is set,
 #                              which derives the public half itself.
+#   OPENPANDA_REQUIRE_RELEASE_KEY  when set, OPENPANDA_RELEASE_KEY must be
+#                              present or the script exits — the release
+#                              workflow uses it so a missing secret can never
+#                              ship a key-less release behind users' backs.
 
 set -eu
 
@@ -53,6 +57,18 @@ if [ -n "${OPENPANDA_RELEASE_KEY:-}" ]; then
 elif [ -n "${OPENPANDA_RELEASE_PUBKEY:-}" ]; then
     RELEASE_PUBKEY="$OPENPANDA_RELEASE_PUBKEY"
 fi
+
+# OPENPANDA_REQUIRE_RELEASE_KEY turns the signed posture from advisory into
+# mandatory — the release workflow sets it, so a missing secret aborts the
+# build instead of quietly shipping key-less binaries that will refuse every
+# release they are then offered. It requires the private half specifically:
+# _PUBKEY alone bakes a key into binaries but leaves checksums.txt.sig to a
+# signer that is not in this pipeline, which ships users a worse failure.
+if [ -n "${OPENPANDA_REQUIRE_RELEASE_KEY:-}" ] && [ -z "${OPENPANDA_RELEASE_KEY:-}" ]; then
+    echo "package.sh: OPENPANDA_REQUIRE_RELEASE_KEY is set but OPENPANDA_RELEASE_KEY is empty — refusing to package an unverifiable release" >&2
+    exit 1
+fi
+
 if [ -n "$RELEASE_PUBKEY" ]; then
     LDFLAGS="$LDFLAGS -X ${VERSION_PKG}.ReleasePubKey=${RELEASE_PUBKEY}"
     echo "→ release key pinned: ${RELEASE_PUBKEY%????????????????????????????????}…"

@@ -111,6 +111,7 @@ The v0.0.11 preview — codename **Rendezvous**, the orbital meeting. This cut c
 - A non-mesh origin's `authorized=true` consent grant used to buy the unrestricted local tool face on the executor — the origin user's yes standing in for this node's owner. `network.trust.accept.<tier>.foreign_consent` (`strip` default, `honor` for same-owner nodes on untrusted segments) decides whether a foreign grant survives admission; stripped tasks run restricted and park their irreversibles in the local review queue.
 - `trust.NeedsOf` now counts `ContextType: "file"` as needing inputs, matching the store- and submit-side derivations — a file task can no longer pass one gate and trip another.
 - Trust resolution folds the configured addr hint even when a row pin exists (least-trusting wins both ways), and reputation aggregates by the peer's proven Ed25519 key instead of its instance id — a restarted node no longer cold-starts its track record.
+- **Signed update channel wired end to end** — the fail-closed updater above shipped without its key infrastructure: release CI never received a signing secret, no `checksums.txt.sig` was produced, and the publish list omitted it anyway — so this build refused every release it was offered. `make package` now runs under `OPENPANDA_REQUIRE_RELEASE_KEY` (a missing `OPENPANDA_RELEASE_KEY` aborts instead of warning) and the signature asset is published; `panda update` also selects `lite-` assets for lite builds via a build-flag probe and refuses up front on platforms the release matrix does not ship.
 
 ### Changed
 

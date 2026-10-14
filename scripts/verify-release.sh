@@ -32,11 +32,21 @@ done
         done < checksums.txt
     fi
 })
-# When a release key is in the environment the signature is part of the
-# contract: a packaged release that pinned the pubkey but ships no
-# checksums.txt.sig would be refused by every updated node.
-if [ -n "${OPENPANDA_RELEASE_KEY:-}" ] || [ -n "${OPENPANDA_RELEASE_PUBKEY:-}" ]; then
+# The signature is mandatory whenever a release key is in play — a release
+# that pinned the pubkey but ships no checksums.txt.sig would be refused by
+# every node it reaches — and whenever the caller demands it (the release
+# workflow sets OPENPANDA_REQUIRE_RELEASE_KEY so a missing secret cannot
+# quietly ship an unsigned channel). A sig that is present is always
+# verified; without key material in the environment there is nothing to
+# verify it against, which is itself a failure.
+if [ -n "${OPENPANDA_RELEASE_KEY:-}" ] || [ -n "${OPENPANDA_RELEASE_PUBKEY:-}" ] || [ -n "${OPENPANDA_REQUIRE_RELEASE_KEY:-}" ]; then
     [ -f "$DIST/checksums.txt.sig" ] || { echo "missing dist/checksums.txt.sig" >&2; exit 1; }
+fi
+if [ -f "$DIST/checksums.txt.sig" ]; then
+    if [ -z "${OPENPANDA_RELEASE_KEY:-}" ] && [ -z "${OPENPANDA_RELEASE_PUBKEY:-}" ]; then
+        echo "checksums.txt.sig is present but no OPENPANDA_RELEASE_KEY/_PUBKEY is available to verify it" >&2
+        exit 1
+    fi
     (cd "$ROOT" && go run ./scripts/sign-release -verify "$DIST/checksums.txt" "$DIST/checksums.txt.sig")
 fi
 echo "release contract verified for v$VERSION"

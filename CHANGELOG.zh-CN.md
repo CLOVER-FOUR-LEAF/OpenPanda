@@ -105,6 +105,7 @@ v0.0.11 预览版 —— 代号 **Rendezvous**（轨道会合）。本版把整�
 - 非 mesh 来源的 `authorized=true` 授权此前可在执行端换到不受限工具面——来源用户的"同意"冒充了本机所有者。`network.trust.accept.<tier>.foreign_consent`（默认 `strip`，同主不受信网段可 `honor`）决定外来授权是否存活；被剥离的任务按受限运行并把不可逆操作停入本机审批队列。
 - `trust.NeedsOf` 现在把 `ContextType: "file"` 计入需要 inputs，与 store/submit 侧推导一致。
 - 信任解析在已有行钉选时同样折叠配置 addr 提示（两侧取最不信任），信誉按对端已证 Ed25519 密钥而非实例 id 聚合——重启的节点不再冷启动其履历。
+- **签名更新通道端到端接通** —— 上条"未签名更新被拒"的更新器当时缺少密钥设施：发布 CI 从未获得签名 secret，`checksums.txt.sig` 从未生成，发布清单里也没有它——本构建因而拒绝所有可用发布。`make package` 现在运行在 `OPENPANDA_REQUIRE_RELEASE_KEY` 之下（缺 `OPENPANDA_RELEASE_KEY` 即中止而非警告），签名资产随发布上传；`panda update` 还会通过构建标记探测为 lite 构建选择 `lite-` 资产，对发布矩阵未覆盖的平台在下载前即拒绝。
 
 ### 变更
 
