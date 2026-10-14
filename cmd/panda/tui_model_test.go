@@ -20,6 +20,7 @@ import (
 	"github.com/Xustalis/OpenPanda/internal/entry"
 	"github.com/Xustalis/OpenPanda/internal/i18n"
 	"github.com/charmbracelet/lipgloss"
+	"github.com/charmbracelet/x/ansi"
 )
 
 // newTestTUI builds a model over a minimal engine-less repl — enough to drive
@@ -704,10 +705,21 @@ func TestTUIMouseClickActions(t *testing.T) {
 		if layout.yes.w == 0 || layout.no.w == 0 {
 			t.Fatalf("approval card did not render option hitboxes: %+v", layout)
 		}
-		originY := 40 - lipgloss.Height(layout.rendered)
+		// Render once so the frame publishes where the live region landed,
+		// then find the painted choice row inside the emitted frame rather
+		// than assuming the card hugs the bottom of the terminal.
+		painted := strings.Split(ansi.Strip(m.View()), "\n")
+		choiceY := -1
+		for i, l := range painted {
+			if strings.Contains(l, "[y]") && strings.Contains(l, "[n]") {
+				choiceY = i
+			}
+		}
+		if choiceY < 0 {
+			t.Fatal("approval card's [y]/[n] choice row not found in painted frame")
+		}
 		yesMid := layout.yes.x + layout.yes.w/2
 		noMid := layout.no.x + layout.no.w/2
-		choiceY := originY + layout.yes.y
 
 		// A click in the transcript area (anywhere off the choice row) is a
 		// no-op — this is the regression the old left-half-of-screen rule
@@ -718,7 +730,7 @@ func TestTUIMouseClickActions(t *testing.T) {
 		}
 		// A click on the card body (the head line) is also a no-op, even at an
 		// X that falls inside the yes option's column span.
-		headY := originY + 1
+		headY := choiceY - layout.yes.y + 1
 		got = step(got, tea.MouseMsg{X: yesMid, Y: headY, Action: tea.MouseActionPress, Button: tea.MouseButtonLeft})
 		if got.mode != modeApproving || got.pending == nil {
 			t.Fatalf("click on the card body must not answer the card: mode=%v pending=%+v", got.mode, got.pending)
@@ -799,6 +811,90 @@ func TestTUIMouseClickActions(t *testing.T) {
 				t.Fatalf("gap after button %d hit %d", i, hit)
 			}
 		}
+	}
+}
+
+// TestHitboxesTrackRenderedFrame pins the click hitboxes to the rows the frame
+// actually emitted rather than assumptions about the terminal height. The
+// frame paints one row short of the terminal (#44), so the status row sits on
+// the last emitted line — one above the terminal bottom — and the approval
+// card's live region floats to wherever the content left off, not to a
+// bottom-anchored guess.
+func TestHitboxesTrackRenderedFrame(t *testing.T) {
+	// 1. Asking footer buttons sit on the last painted row of the frame.
+	m := newTestTUI(t)
+	m = step(m, tea.WindowSizeMsg{Width: 100, Height: 40})
+	m.mode = modeAsking
+	cancelled := false
+	m.stream = newTestStream(&cancelled)
+
+	painted := strings.Split(m.View(), "\n")
+	buttons := m.askingButtonRects()
+	if len(buttons) != 3 || buttons[0].w == 0 {
+		t.Fatalf("asking buttons missing: %+v", buttons)
+	}
+	for i, b := range buttons {
+		if want := len(painted) - 1; b.y != want {
+			t.Fatalf("button %d y=%d, want last painted row %d (frame has %d lines, height=%d)", i, b.y, want, len(painted), m.height)
+		}
+		if got := m.askingButtonHit(b.x+b.w/2, b.y); got != i {
+			t.Fatalf("click on button %d rect hit %d", i, got)
+		}
+	}
+
+	// 2. Approval card: locate the painted "[y]"/"[n]" choice row and click its
+	// cells — a bottom-anchored hitbox would miss whenever the transcript is
+	// shorter than the screen.
+	m2 := newTestTUI(t)
+	m2 = step(m2, tea.WindowSizeMsg{Width: 100, Height: 40})
+	m2.mode = modeApproving
+	m2.pending = &askengine.Result{Approval: &askengine.ApprovalRequest{
+		TaskID: "t1", Title: "do it", Reason: "needs ok", Scope: "once",
+	}}
+
+	lines := strings.Split(ansi.Strip(m2.View()), "\n")
+	yesX, yesY, noX := -1, -1, -1
+	for i, l := range lines {
+		if x := strings.Index(l, "[y]"); x >= 0 && strings.Contains(l, "[n]") {
+			yesX, yesY, noX = x, i, strings.Index(l, "[n]")
+		}
+	}
+	if yesY < 0 {
+		t.Fatal("approval card's [y]/[n] choice row not found in painted frame")
+	}
+	if got, _ := m2.approvalHit(yesX+1, yesY); got != 0 {
+		t.Fatalf("click on painted [y] at (%d,%d) hit choice %d, want 0", yesX+1, yesY, got)
+	}
+	if got, _ := m2.approvalHit(noX+1, yesY); got != 1 {
+		t.Fatalf("click on painted [n] at (%d,%d) hit choice %d, want 1", noX+1, yesY, got)
+	}
+
+	// 3. An overflowing transcript still lands the card directly above the
+	// input box: fill history past the window so the scroll branch runs, then
+	// check the same painted-row click.
+	m3 := newTestTUI(t)
+	m3 = step(m3, tea.WindowSizeMsg{Width: 100, Height: 24})
+	for i := 0; i < 60; i++ {
+		m3.chatHistory.blocks = append(m3.chatHistory.blocks, block{kind: blockNote, body: "filler line " + strconv.Itoa(i)})
+	}
+	m3.mode = modeApproving
+	m3.pending = &askengine.Result{Approval: &askengine.ApprovalRequest{
+		TaskID: "t3", Title: "do it", Reason: "needs ok", Scope: "once",
+	}}
+	lines3 := strings.Split(ansi.Strip(m3.View()), "\n")
+	x3, y3 := -1, -1
+	for i, l := range lines3 {
+		if x := strings.Index(l, "[y]"); x >= 0 && strings.Contains(l, "[n]") {
+			x3, y3 = x, i
+		}
+	}
+	if y3 < 0 {
+		t.Fatal("overflowing frame lost the approval choice row")
+	}
+	// The card sits at the bottom of the scrolled window, right above the
+	// input box — clicking [y]'s painted cell must still approve.
+	if got, _ := m3.approvalHit(x3+1, y3); got != 0 {
+		t.Fatalf("click on painted [y] at (%d,%d) of an overflowing frame hit %d, want 0 (height=%d)", x3+1, y3, got, m3.height)
 	}
 }
 

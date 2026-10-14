@@ -141,11 +141,17 @@ func (m tuiModel) mainChatView(live string) string {
 	}
 
 	// 3. In-flight live region (streaming answer, reasoning preview, task progress card, spinner)
+	liveLines := 0
 	if strings.TrimSpace(live) != "" {
-		contentLines = append(contentLines, strings.Split(live, "\n")...)
+		split := strings.Split(live, "\n")
+		liveLines = len(split)
+		contentLines = append(contentLines, split...)
 	}
 
 	totalContent := len(contentLines)
+	// liveStart is the content-line index where the live region begins; the
+	// branches below translate it into a screen row for the click handlers.
+	liveStart := totalContent - liveLines
 
 	// 4. Pad blank lines so inputView stays anchored at the bottom of the screen
 	if totalContent <= availHeight {
@@ -160,6 +166,11 @@ func (m tuiModel) mainChatView(live string) string {
 			out = append(out, "")
 		}
 		out = append(out, inputLines...)
+		liveTop := -1
+		if liveLines > 0 {
+			liveTop = liveStart
+		}
+		m.publishFrameGeom(tuiFrameGeom{rows: len(out), liveTop: liveTop})
 		return clipRendered(strings.Join(out, "\n"), w)
 	}
 
@@ -214,6 +225,11 @@ func (m tuiModel) mainChatView(live string) string {
 		out = append(out, visibleLines...)
 	}
 	out = append(out, inputLines...)
+	liveTop := -1
+	if liveLines > 0 {
+		liveTop = liveStart - start
+	}
+	m.publishFrameGeom(tuiFrameGeom{rows: len(out), liveTop: liveTop})
 	return clipRendered(strings.Join(out, "\n"), w)
 }
 
@@ -227,6 +243,41 @@ func (m tuiModel) publishScrollLimit(maxScroll int) {
 	if m.scrollLimit != nil {
 		*m.scrollLimit = max(0, maxScroll)
 	}
+}
+
+// tuiFrameGeom is where the frame mainChatView just emitted actually placed
+// things on screen. Click handlers read it to translate mouse coordinates —
+// the frame's own row count is authoritative because it does not always fill
+// the terminal (it deliberately stays one row short, #44), and the live
+// region's origin depends on how much history sat above it and whether the
+// transcript is scrolled.
+type tuiFrameGeom struct {
+	// rows is the number of lines the frame emitted; the status row and its
+	// clickable footer cells sit on the last one.
+	rows int
+	// liveTop is the screen row the live region's first line landed on, or
+	// -1 when the frame carried no live region. It can be negative when the
+	// transcript is scrolled back far enough to push the live region above
+	// the visible window.
+	liveTop int
+}
+
+// publishFrameGeom records the geometry of the frame just rendered, using the
+// same shared-pointer trick as publishScrollLimit.
+func (m tuiModel) publishFrameGeom(g tuiFrameGeom) {
+	if m.frameGeom != nil {
+		*m.frameGeom = g
+	}
+}
+
+// frameRows returns the number of lines the last frame emitted. Before the
+// first render it predicts what the next frame will emit — one row short of
+// the terminal height — so hitboxes built ahead of the first View still land.
+func (m tuiModel) frameRows() int {
+	if m.frameGeom != nil && m.frameGeom.rows > 0 {
+		return m.frameGeom.rows
+	}
+	return max(1, m.height-1)
 }
 
 // splashView renders the centered full-screen startup overlay.
@@ -1053,17 +1104,19 @@ func (r tuiRect) contains(x, y int) bool {
 
 // approvalHit maps a terminal click to an approval choice and a scope option:
 // choice is 0 = approve, 1 = deny, -1 = not on either option; scope is the
-// index into approvalScopes or -1. The card is bottom-anchored by
-// mainChatView; approvalLayout supplies option cells relative to the rendered
-// card, and this function only translates them into screen coordinates.
+// index into approvalScopes or -1. The card is part of the live region — in
+// modeApproving the live string is "\n" + card, so the card begins one row
+// below the region's published top. approvalLayout supplies option cells
+// relative to the rendered card, and this function only translates them into
+// screen coordinates; a frame that never published a live region has no card
+// to hit.
 func (m tuiModel) approvalHit(x, y int) (choice, scope int) {
 	choice, scope = -1, -1
-	if m.height <= 0 || m.pending == nil || m.pending.Approval == nil {
+	if m.pending == nil || m.pending.Approval == nil || m.frameGeom == nil || m.frameGeom.liveTop < 0 {
 		return choice, scope
 	}
 	layout := m.approvalLayout()
-	cardHeight := lipgloss.Height(layout.rendered)
-	originY := max(0, m.height-cardHeight)
+	originY := m.frameGeom.liveTop + 1
 	yes := layout.yes
 	no := layout.no
 	yes.y += originY
@@ -1111,7 +1164,7 @@ func (m tuiModel) askingButtonRects() []tuiRect {
 		prefix := plain[searchByte : searchByte+rel]
 		x := searchCol + lipgloss.Width(prefix)
 		w := lipgloss.Width(needle)
-		buttons[i] = tuiRect{x: x, y: m.height - 1, w: w, h: 1}
+		buttons[i] = tuiRect{x: x, y: m.frameRows() - 1, w: w, h: 1}
 		searchByte += rel + len(needle)
 		searchCol = x + w
 	}
