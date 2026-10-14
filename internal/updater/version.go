@@ -19,6 +19,7 @@ import (
 	"os/exec"
 	"regexp"
 	"runtime"
+	"runtime/debug"
 	"strconv"
 	"strings"
 	"time"
@@ -528,18 +529,58 @@ var (
 )
 
 // AssetName returns the release asset file name for the current platform and
-// the given version. Unix and Windows targets use the same GOARCH naming
-// convention as scripts/package.sh; this keeps self-update aligned with the
-// standalone installers.
-func AssetName(version string) string {
-	return assetNameFor(version, runtime.GOOS, runtime.GOARCH)
+// the given version. The release matrix is scripts/package.sh's TARGETS —
+// full builds for darwin/linux amd64+arm64 and windows amd64+arm64, lite
+// builds for linux amd64/arm64/armv7 — and a lite binary carries the
+// "lite-" infix so it updates onto its own footprint instead of silently
+// swapping in the full build. A platform the matrix does not ship (a
+// locally-built lite binary on darwin, a full build on linux/arm, a GOARM≠7
+// lite build) gets an error here rather than a confusing "no checksums.txt
+// entry" later.
+func AssetName(version string) (string, error) {
+	return assetNameFor(version, runtime.GOOS, runtime.GOARCH, liteBuild, goarmLevel())
 }
 
-func assetNameFor(version, os, arch string) string {
-	if os == "windows" {
-		return fmt.Sprintf("panda-%s-%s-%s.zip", version, os, arch)
+func assetNameFor(version, goos, goarch string, lite bool, goarm int) (string, error) {
+	if lite {
+		switch {
+		case goos == "linux" && (goarch == "amd64" || goarch == "arm64"):
+			return fmt.Sprintf("panda-%s-lite-%s-%s.tar.gz", version, goos, goarch), nil
+		case goos == "linux" && goarch == "arm" && goarm == 7:
+			return fmt.Sprintf("panda-%s-lite-linux-armv7.tar.gz", version), nil
+		default:
+			return "", fmt.Errorf("no lite release asset is published for %s/%s", goos, goarch)
+		}
 	}
-	return fmt.Sprintf("panda-%s-%s-%s.tar.gz", version, os, arch)
+	switch {
+	case goos == "windows" && (goarch == "amd64" || goarch == "arm64"):
+		return fmt.Sprintf("panda-%s-%s-%s.zip", version, goos, goarch), nil
+	case (goos == "darwin" || goos == "linux") && (goarch == "amd64" || goarch == "arm64"):
+		return fmt.Sprintf("panda-%s-%s-%s.tar.gz", version, goos, goarch), nil
+	default:
+		return "", fmt.Errorf("no release asset is published for %s/%s", goos, goarch)
+	}
+}
+
+// goarmLevel reports the GOARM level the binary was compiled with (5/6/7), or
+// 0 on non-ARM builds. runtime exports no GOARM symbol since the internal
+// reshuffle, so this reads the value the toolchain stamps into every binary's
+// embedded build info — which survives the -s -w release ldflags.
+func goarmLevel() int {
+	if runtime.GOARCH != "arm" {
+		return 0
+	}
+	bi, ok := debug.ReadBuildInfo()
+	if !ok {
+		return 0
+	}
+	for _, s := range bi.Settings {
+		if s.Key == "GOARM" {
+			n, _ := strconv.Atoi(s.Value)
+			return n
+		}
+	}
+	return 0
 }
 
 // defaultLogger returns a discard logger when a Manager is built without one.

@@ -10,21 +10,62 @@ import (
 	"testing"
 )
 
+// mustAssetName resolves this test build's release asset name; the matrix has
+// an entry for every platform the suite's gate configurations compile for.
+func mustAssetName(t *testing.T, version string) string {
+	t.Helper()
+	name, err := AssetName(version)
+	if err != nil {
+		t.Fatalf("AssetName(%q): %v", version, err)
+	}
+	return name
+}
+
 func TestAssetNameFor(t *testing.T) {
 	tests := []struct {
-		os, arch, want string
+		name     string
+		os, arch string
+		lite     bool
+		goarm    int
+		want     string
+		wantErr  bool
 	}{
-		{"darwin", "amd64", "panda-1.2.3-darwin-amd64.tar.gz"},
-		{"darwin", "arm64", "panda-1.2.3-darwin-arm64.tar.gz"},
-		{"linux", "amd64", "panda-1.2.3-linux-amd64.tar.gz"},
-		{"linux", "arm64", "panda-1.2.3-linux-arm64.tar.gz"},
-		{"windows", "amd64", "panda-1.2.3-windows-amd64.zip"},
-		{"windows", "arm64", "panda-1.2.3-windows-arm64.zip"},
+		{"darwin amd64", "darwin", "amd64", false, 0, "panda-1.2.3-darwin-amd64.tar.gz", false},
+		{"darwin arm64", "darwin", "arm64", false, 0, "panda-1.2.3-darwin-arm64.tar.gz", false},
+		{"linux amd64", "linux", "amd64", false, 0, "panda-1.2.3-linux-amd64.tar.gz", false},
+		{"linux arm64", "linux", "arm64", false, 0, "panda-1.2.3-linux-arm64.tar.gz", false},
+		{"windows amd64", "windows", "amd64", false, 0, "panda-1.2.3-windows-amd64.zip", false},
+		{"windows arm64", "windows", "arm64", false, 0, "panda-1.2.3-windows-arm64.zip", false},
+		// A lite build must pull its own archive, not silently upgrade to the
+		// full footprint the same GOOS/GOARCH would get.
+		{"lite linux amd64", "linux", "amd64", true, 0, "panda-1.2.3-lite-linux-amd64.tar.gz", false},
+		{"lite linux arm64", "linux", "arm64", true, 0, "panda-1.2.3-lite-linux-arm64.tar.gz", false},
+		{"lite linux armv7", "linux", "arm", true, 7, "panda-1.2.3-lite-linux-armv7.tar.gz", false},
+		// Targets the release matrix does not ship refuse up front instead of
+		// dying later on a missing checksums.txt entry.
+		{"lite darwin", "darwin", "arm64", true, 0, "", true},
+		{"lite windows", "windows", "amd64", true, 0, "", true},
+		{"lite linux armv6", "linux", "arm", true, 6, "", true},
+		{"full linux arm", "linux", "arm", false, 7, "", true},
+		{"freebsd amd64", "freebsd", "amd64", false, 0, "", true},
+		{"windows 386", "windows", "386", false, 0, "", true},
 	}
 	for _, tt := range tests {
-		if got := assetNameFor("1.2.3", tt.os, tt.arch); got != tt.want {
-			t.Errorf("assetNameFor(%q, %q) = %q, want %q", tt.os, tt.arch, got, tt.want)
-		}
+		t.Run(tt.name, func(t *testing.T) {
+			got, err := assetNameFor("1.2.3", tt.os, tt.arch, tt.lite, tt.goarm)
+			if tt.wantErr {
+				if err == nil {
+					t.Fatalf("assetNameFor(%q, %q, lite=%v) = %q, want error", tt.os, tt.arch, tt.lite, got)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("assetNameFor(%q, %q, lite=%v) err = %v", tt.os, tt.arch, tt.lite, err)
+			}
+			if got != tt.want {
+				t.Errorf("assetNameFor(%q, %q, lite=%v) = %q, want %q", tt.os, tt.arch, tt.lite, got, tt.want)
+			}
+		})
 	}
 }
 

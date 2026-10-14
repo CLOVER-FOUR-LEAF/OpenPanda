@@ -73,7 +73,7 @@ func mustKey(t *testing.T) ed25519.PublicKey {
 // unless the caller explicitly allows unsigned releases.
 func TestDownloadReleaseSignatureEnforcement(t *testing.T) {
 	const version = "9.9.9"
-	name := AssetName(version)
+	name := mustAssetName(t, version)
 	asset := []byte("release archive bytes")
 	sum := sha256.Sum256(asset)
 	sums := fmt.Sprintf("%s  %s\n", hex.EncodeToString(sum[:]), name)
@@ -159,7 +159,7 @@ func TestManagerPipeline(t *testing.T) {
 	// everywhere else — so the fixture must be built to match, or the
 	// staging step hands a tar.gz to unzip.
 	dir0 := t.TempDir()
-	archivePath := filepath.Join(dir0, AssetName(version))
+	archivePath := filepath.Join(dir0, mustAssetName(t, version))
 	if strings.HasSuffix(archivePath, ".zip") {
 		writeZip(t, archivePath, map[string][]byte{
 			"openpanda/bin/" + exeName(): make([]byte, 16),
@@ -176,7 +176,7 @@ func TestManagerPipeline(t *testing.T) {
 		t.Fatal(err)
 	}
 	sum := sha256.Sum256(asset)
-	name := AssetName(version)
+	name := mustAssetName(t, version)
 	sums := fmt.Sprintf("%s  %s\n", hex.EncodeToString(sum[:]), name)
 	pub, priv, err := ed25519.GenerateKey(nil)
 	if err != nil {

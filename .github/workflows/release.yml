@@ -74,6 +74,12 @@ jobs:
     timeout-minutes: 30
     env:
       HOMEBREW_TAP_TOKEN: ${{ secrets.HOMEBREW_TAP_TOKEN }}
+      # The release signing key lives in repo secrets. Packaging bakes its
+      # public half into every binary and signs checksums.txt; REQUIRE makes
+      # a missing secret fail the build instead of shipping an unverifiable
+      # release (binaries without a key refuse every update they see).
+      OPENPANDA_RELEASE_KEY: ${{ secrets.OPENPANDA_RELEASE_KEY }}
+      OPENPANDA_REQUIRE_RELEASE_KEY: "true"
     steps:
       - name: Checkout
         uses: actions/checkout@v7
@@ -200,6 +206,7 @@ jobs:
             dist/panda-*.tar.gz
             dist/panda-*.zip
             dist/checksums.txt
+            dist/checksums.txt.sig
             dist/openpanda.rb
 
       # Homebrew has no pre-release concept: the tap is one formula, so
