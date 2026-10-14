@@ -10,18 +10,18 @@ package version
 // Version is the semantic version of this build, and the default for a build
 // that does not go through release packaging.
 //
-// It tracks the newest tag on main — currently the v0.0.11-beta preview —
+// It tracks the newest tag on main — currently the v0.0.11-preview preview —
 // so ad-hoc builds identify themselves with the branch's latest published
 // lineage.
-var Version = "0.0.11-beta"
+var Version = "0.0.11-preview"
 
-// Codename is the release line's thematic name — v0.0.11 is "Periapsis", the
-// near point of the orbit: after Apoapsis reached outward to the LAN, this
-// line tightens the mesh itself — encrypted sessions, custody that survives
-// dead links, honest parked states, and approvals that cannot strand on a
-// stale hello. Surfaced by `panda version` and /api/version; not part of the
-// semver itself.
-var Codename = "Periapsis"
+// Codename is the release line's thematic name — v0.0.11 is "Rendezvous", the
+// orbital meeting: sibling tasks exchange notes mid-flight on the message
+// board, delegated hops relay contexts and artifacts up the chain, and agent
+// work meets an undo point instead of drifting past one. (The alpha/beta line
+// ran as "Periapsis", but that name already belongs to v0.0.9.) Surfaced by
+// `panda version` and /api/version; not part of the semver itself.
+var Codename = "Rendezvous"
 
 // ReleasePubKey is the Ed25519 public key (hex or base64) the self-update
 // path trusts to sign checksums.txt. Release packaging bakes it in via

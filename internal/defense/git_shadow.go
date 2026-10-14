@@ -335,8 +335,10 @@ func RollbackGitBaseline(workDir, taskID string) (restored, removed []string, er
 			continue
 		}
 		if code != "??" {
-			// A tracked-state entry absent from the baseline is a pre-baseline
-			// deletion (already gone) — nothing to remove.
+			// A tracked-state entry absent from the baseline is either a
+			// pre-baseline deletion (already gone) or a staged addition —
+			// and the restore above already dropped a staged add from both
+			// index and worktree, so nothing remains to remove.
 			continue
 		}
 		abs := filepath.Join(workDir, filepath.FromSlash(p))

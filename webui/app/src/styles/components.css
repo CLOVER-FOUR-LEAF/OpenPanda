@@ -381,6 +381,10 @@ input[type='checkbox'].check,
   font-size: var(--text-md);
   line-height: var(--leading-normal);
 }
+/* The terms & disclaimer reader needs room for ten sections of prose. */
+.modal.terms-modal {
+  width: min(680px, calc(100vw - 32px));
+}
 .modal-actions {
   display: flex;
   justify-content: flex-end;

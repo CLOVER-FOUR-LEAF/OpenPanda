@@ -239,6 +239,15 @@ func TestGitBaselineRollback(t *testing.T) {
 	if err := os.WriteFile(agentOut, []byte("noise\n"), 0o644); err != nil {
 		t.Fatalf("write agent output: %v", err)
 	}
+	// A task that stages its new work (porcelain "A ", not "??") must lose it
+	// too — the staged restore drops it from both index and worktree.
+	staged := filepath.Join(repo, "staged-new.go")
+	if err := os.WriteFile(staged, []byte("package gen\n"), 0o644); err != nil {
+		t.Fatalf("write staged file: %v", err)
+	}
+	if out, err := exec.Command("git", "-C", repo, "add", "staged-new.go").CombinedOutput(); err != nil {
+		t.Fatalf("git add: %v (%s)", err, out)
+	}
 
 	restored, removed, err := RollbackGitBaseline(repo, taskID)
 	if err != nil {
@@ -258,6 +267,12 @@ func TestGitBaselineRollback(t *testing.T) {
 	}
 	if _, err := os.Stat(agentOut); !os.IsNotExist(err) {
 		t.Fatal("agent output survived rollback")
+	}
+	if _, err := os.Stat(staged); !os.IsNotExist(err) {
+		t.Fatal("staged task file survived rollback")
+	}
+	if out, _ := exec.Command("git", "-C", repo, "status", "--porcelain").Output(); strings.Contains(string(out), "staged-new.go") {
+		t.Fatalf("staged file still in the index after rollback: %s", out)
 	}
 
 	// The ref is consumed: a second revert reports ErrNoGitBaseline, not

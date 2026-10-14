@@ -392,6 +392,52 @@ func TestHandleTaskMessageFanout(t *testing.T) {
 	}
 }
 
+// TestHandleTaskMessageForgedSender: a member→owner post naming a sender that
+// is not on the scope's roster must not land — the wire authenticates the
+// sending node, not the task id it claims, so without the membership check a
+// reachable node could write slots under any task the owner happens to hold.
+func TestHandleTaskMessageForgedSender(t *testing.T) {
+	c := msgCore(t)
+	ctx := context.Background()
+	parent := createTask(t, c.store, "", "parent", c.nodeID)
+	child := createTask(t, c.store, parent.TaskID, "child", c.nodeID)
+	stranger := createTask(t, c.store, "", "stranger", c.nodeID)
+
+	env := func(p bus.TaskMessagePayload) bus.Envelope {
+		e, err := bus.NewEnvelope(bus.MsgTaskMessage, "node-b", "m1", p)
+		if err != nil {
+			t.Fatalf("envelope: %v", err)
+		}
+		return e
+	}
+	// A member's post lands and fans out onto the owner's board.
+	ok := bus.TaskMessagePayload{
+		Scope: "task:" + parent.TaskID, Sender: child.TaskID, To: "parent",
+		Grade: MsgGradeStatus, Body: "legit", Seq: 1, SentAt: time.Now().Unix(),
+	}
+	c.handleTaskMessage(ctx, env(ok))
+	if msgs, _ := c.store.TaskMessages(ctx, "task:"+parent.TaskID); len(msgs) != 1 {
+		t.Fatalf("member post missing: %+v", msgs)
+	}
+	// A post claiming the scope but naming a task outside the roster is refused.
+	forged := ok
+	forged.Sender = stranger.TaskID
+	forged.Seq = 9
+	c.handleTaskMessage(ctx, env(forged))
+	msgs, _ := c.store.TaskMessages(ctx, "task:"+parent.TaskID)
+	if len(msgs) != 1 || msgs[0].Sender != child.TaskID {
+		t.Fatalf("forged sender stored: %+v", msgs)
+	}
+	// And a member claiming a scope it does not belong to is refused the same way.
+	offBoard := ok
+	offBoard.Scope = "task:" + stranger.TaskID
+	offBoard.Seq = 2
+	c.handleTaskMessage(ctx, env(offBoard))
+	if msgs, _ := c.store.TaskMessages(ctx, "task:"+stranger.TaskID); len(msgs) != 0 {
+		t.Fatalf("off-scope post stored: %+v", msgs)
+	}
+}
+
 // TestMessageBudgetDefault: an unset cap falls back to the package default.
 func TestMessageBudgetDefault(t *testing.T) {
 	c := &Core{}

@@ -3,6 +3,7 @@
 package memory
 
 import (
+	"math"
 	"sort"
 
 	"github.com/Xustalis/OpenPanda/internal/util"
@@ -13,15 +14,25 @@ import (
 // (USER.md) is always injected in full — it is small and always relevant.
 const conversationMemoryK = 5
 
+// BM25 tuning constants (Robertson & Zaragoza defaults). Entries carry binary
+// term frequencies (tokenize yields a set), so k1 only shapes the length
+// normalization term; b controls how much an entry's length dilutes a match.
+const (
+	bm25K1 = 1.2
+	bm25B  = 0.75
+)
+
 // Retriever ranks memory entries against a query in memory. Memory is tiny (a
 // few KB), so no external index or vector store is needed: tokenize query and
-// entry (reusing the package's existing tokenize) and score by token overlap, a
-// cheap TF-style relevance measure.
+// entries (reusing the package's existing tokenize) and score with a BM25-lite
+// measure — shared tokens are weighted by inverse document frequency across
+// the pool (a token present in every entry carries almost no signal) and
+// normalized by entry length (a long entry is not automatically the best one).
 type Retriever struct{}
 
 // Rank returns up to k entries most relevant to query, highest first. Entries
-// with no token overlap are dropped. An empty query returns the first k entries
-// unchanged (no relevance signal).
+// with no content-token overlap are dropped. An empty query returns the first
+// k entries unchanged (no relevance signal).
 func (Retriever) Rank(query string, entries []string, k int) []string {
 	if k <= 0 || len(entries) == 0 {
 		return nil
@@ -32,41 +43,62 @@ func (Retriever) Rank(query string, entries []string, k int) []string {
 		}
 		return append([]string(nil), entries[:k]...)
 	}
-	type scored struct {
-		entry string
-		score int
-	}
-	ranked := make([]scored, len(entries))
+	q := tokenize(query)
+	n := len(entries)
+
+	// One pass over the pool: per-entry token sets plus the document frequency
+	// of every content token. df is corpus statistics, so stopwords stay out.
+	toks := make([]map[string]struct{}, n)
+	df := make(map[string]int)
+	totalLen := 0
 	for i, e := range entries {
-		ranked[i] = scored{e, overlap(query, e)}
+		toks[i] = tokenize(e)
+		totalLen += len(toks[i])
+		for tok := range toks[i] {
+			if util.IsStopword(tok) {
+				continue
+			}
+			df[tok]++
+		}
 	}
-	sort.SliceStable(ranked, func(i, j int) bool { return ranked[i].score > ranked[j].score })
+	avgLen := 1.0
+	if totalLen > 0 {
+		avgLen = float64(totalLen) / float64(n)
+	}
+
+	type scored struct {
+		i     int
+		score float64
+	}
+	ranked := make([]scored, n)
+	for i := range entries {
+		// tf = 1 for every token (set semantics), so the BM25 term reduces to
+		// idf × length norm; k1 folds into the denominator constant.
+		dl := float64(len(toks[i]))
+		norm := (bm25K1 + 1) / (1 + bm25K1*(1-bm25B+bm25B*dl/avgLen))
+		var s float64
+		for tok := range toks[i] {
+			if util.IsStopword(tok) {
+				continue
+			}
+			if _, ok := q[tok]; !ok {
+				continue
+			}
+			idf := math.Log(1 + (float64(n)-float64(df[tok])+0.5)/(float64(df[tok])+0.5))
+			s += idf * norm
+		}
+		ranked[i] = scored{i, s}
+	}
+	sort.SliceStable(ranked, func(a, b int) bool { return ranked[a].score > ranked[b].score })
 	out := make([]string, 0, k)
-	for _, s := range ranked {
-		if s.score == 0 {
+	for _, r := range ranked {
+		if r.score == 0 {
 			break
 		}
-		out = append(out, s.entry)
+		out = append(out, entries[r.i])
 		if len(out) == k {
 			break
 		}
 	}
 	return out
-}
-
-// overlap counts the tokens shared between query and entry (tokenize is defined
-// in signals.go for the Dreaming engine's novelty signal), skipping function
-// words (Latin and CJK) so a common word alone does not create a false match.
-func overlap(query, entry string) int {
-	q := tokenize(query)
-	n := 0
-	for t := range tokenize(entry) {
-		if util.IsStopword(t) {
-			continue
-		}
-		if _, ok := q[t]; ok {
-			n++
-		}
-	}
-	return n
 }

@@ -131,6 +131,17 @@ type tuiModel struct {
 	// clamped against a limit of zero.
 	scrollLimit *int
 
+	// frameGeom records where the last frame actually placed its rows — how
+	// many lines it emitted and which screen row the live region started on.
+	// Click hitboxes (approval options, footer buttons) translate terminal
+	// coordinates against this published geometry instead of re-deriving the
+	// layout from m.height: the frame paints one row short of the terminal
+	// (#44), and the live region floats to wherever the content left off, so
+	// neither the row count nor the card's origin can be assumed. Shared
+	// through a pointer for the same reason scrollLimit is — View is a value
+	// method that can publish but cannot write back.
+	frameGeom *tuiFrameGeom
+
 	// activity caches the per-day task counts behind the welcome banner's
 	// heatmap. The banner renders inside the value-receiver View on every
 	// frame, so the store read lives behind a TTL'd pointer every model copy
@@ -371,6 +382,7 @@ func newTUIModel(r *repl) tuiModel {
 		started:     time.Now(),
 		chatHistory: cHist,
 		scrollLimit: newScrollLimit(),
+		frameGeom:   &tuiFrameGeom{liveTop: -1},
 		activity:    &activityCache{},
 		liveRC:      &liveRenderCache{},
 		welcomeC:    &welcomeCache{},

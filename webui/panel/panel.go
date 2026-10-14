@@ -211,6 +211,8 @@ func New(d Deps) http.Handler {
 		mux.HandleFunc("PUT /api/memory/{file}", h.putMemory)
 		mux.HandleFunc("PUT /api/memory/topics/{name}", h.putMemoryTopic)
 		mux.HandleFunc("DELETE /api/memory/topics/{name}", h.deleteMemoryTopic)
+		mux.HandleFunc("DELETE /api/memory/daily/{name}", h.deleteMemoryDaily)
+		mux.HandleFunc("POST /api/memory/daily/prune", h.pruneMemoryDaily)
 		mux.HandleFunc("GET /api/settings/app", h.getAppSettings)
 		mux.HandleFunc("PUT /api/settings/app", h.putAppSettings)
 	}

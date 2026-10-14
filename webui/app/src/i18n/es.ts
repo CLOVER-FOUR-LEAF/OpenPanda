@@ -629,6 +629,11 @@ const es: Messages = {
   'settings.sandboxDescNoBackend':
     'El modo sandbox está configurado pero NO está en efecto — esta plataforma no tiene backend de sandbox (seatbelt/bwrap), los subprocesos se ejecutan sin confinamiento. Estado:',
 
+  'settings.terms': 'Términos y descargo',
+  'settings.termsView': 'Leer los términos',
+  'settings.termsHelp':
+    'La licencia, la garantía y la responsabilidad mostradas en la primera configuración — siempre disponibles.',
+
   // Extensiones de la consola de memoria (C2)
   'memory.graph': 'Grafo',
   'memory.topics': 'Temas',
@@ -645,6 +650,13 @@ const es: Messages = {
   'memory.graph.skill': 'Habilidades',
   'memory.graph.promotion': 'promovido del diario',
   'memory.graph.reference': 'menciona',
+  'memory.graph.zoomIn': 'Acercar',
+  'memory.graph.zoomOut': 'Alejar',
+  'memory.graph.reset': 'Restablecer vista',
+  'memory.graph.hint': 'rueda: zoom · arrastrar: desplazar',
+  'memory.graph.entriesN': '{n} entradas',
+  'memory.graph.charsN': '{n} caracteres',
+  'memory.graph.filesN': '{n} archivos',
   'memory.topicsEmpty': 'Aún no hay archivos de temas.',
   'memory.topicNewPlaceholder': 'nombre del nuevo tema',
   'memory.topicNew': 'Crear',
@@ -664,10 +676,25 @@ const es: Messages = {
   'memory.dreamsEditHint': 'Texto libre; se guarda literalmente.',
   'memory.fromLog': 'del diario',
   'memory.fromLogTip': 'Promovido desde los diarios — señal de peso bajo; corrígela o elimínala si no encaja.',
-  'memory.entryFix': 'Corregir',
   'memory.entryDelete': 'Eliminar',
   'memory.entryDeleteTitle': '¿Eliminar esta entrada?',
   'memory.entryDeleteMsg': 'La entrada se elimina del archivo y deja de ser visible para el agente.',
+  'memory.search': 'Filtrar entradas…',
+  'memory.noMatches': 'Ninguna entrada coincide con el filtro.',
+  'memory.add': 'Añadir',
+  'memory.addPlaceholder': 'Nueva entrada — se guarda como una entrada §',
+  'memory.dailyDelete': 'Eliminar diario',
+  'memory.dailyDeleteTitle': '¿Eliminar este archivo de diario?',
+  'memory.dailyDeleteMsg': 'Se eliminará daily/{name}.md — no se puede deshacer.',
+  'memory.dailyDeleted': 'Archivo de diario eliminado.',
+  'memory.dailyPrune': 'Aplicar retención',
+  'memory.dailyPruneTitle': '¿Aplicar ahora la retención del diario?',
+  'memory.dailyPruneMsg':
+    'Los diarios de más de 30 días pasan al archivo; los de más de 90 días se eliminan. No se puede deshacer.',
+  'memory.dailyPruning': 'Aplicando…',
+  'memory.dailyPruned': 'Retención aplicada.',
+  'memory.dailyRetention':
+    'Retención: se archiva a los 30 días y se elimina a los 90 — el Dreamer también depura por su cuenta.',
 
   // Extensiones de dispositivos y nodos (C3)
   'nodes.self': 'este dispositivo',

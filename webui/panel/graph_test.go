@@ -3,6 +3,7 @@
 package panel
 
 import (
+	"bytes"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
@@ -33,6 +34,12 @@ func graphNodeIDs(t *testing.T, out map[string]any) map[string]bool {
 }
 
 func graphHasEdge(out map[string]any, from, to, kind string) bool {
+	return graphEdgeWeight(out, from, to, kind) > 0
+}
+
+// graphEdgeWeight returns the edge's weight, 0 when the edge is absent (the
+// backend only emits positive weights, so existence and weight coincide).
+func graphEdgeWeight(out map[string]any, from, to, kind string) int {
 	raw, _ := out["edges"].([]any)
 	for _, e := range raw {
 		m, ok := e.(map[string]any)
@@ -40,10 +47,11 @@ func graphHasEdge(out map[string]any, from, to, kind string) bool {
 			continue
 		}
 		if m["from"] == from && m["to"] == to && m["kind"] == kind {
-			return true
+			w, _ := m["weight"].(float64)
+			return int(w)
 		}
 	}
-	return false
+	return 0
 }
 
 // A fresh node still answers 200 with the core surfaces — sparse, not broken.
@@ -72,10 +80,13 @@ func TestMemoryGraphEdges(t *testing.T) {
 	h, cfg := newMemoryPanel(t)
 	hermes := memory.NewHermesWithLimits(cfg.Storage.MemoryPath, memory.Limits{})
 
-	// MEMORY.md carries a dreamer-promoted entry that names a topic.
+	// MEMORY.md carries dreamer-promoted entries; one names a topic twice and
+	// one points back at USER.md (a core-file mention is a reference edge too).
 	if err := hermes.SaveMemory(memory.MemFile{Entries: []string{
 		"team ships fridays " + memory.PromotionSourceTag,
-		"see work for the calendar",
+		"deploys moved " + memory.PromotionSourceTag,
+		"see work and the work calendar",
+		"profile fields live in USER.md",
 	}}); err != nil {
 		t.Fatal(err)
 	}
@@ -94,6 +105,10 @@ func TestMemoryGraphEdges(t *testing.T) {
 	// panel with a skill store wired in.
 	skillStore := skills.NewStore(t.TempDir())
 	if err := skillStore.Save(&skills.Skill{Name: "deploy-check", Description: "verify deploys", Status: skills.StatusPending, Body: "x"}); err != nil {
+		t.Fatal(err)
+	}
+	// A skill whose description names a topic earns a skill→topic reference.
+	if err := skillStore.Save(&skills.Skill{Name: "work-report", Description: "summarize the work log", Status: skills.StatusActive, Body: "x"}); err != nil {
 		t.Fatal(err)
 	}
 	h = New(Deps{
@@ -120,13 +135,53 @@ func TestMemoryGraphEdges(t *testing.T) {
 			t.Errorf("missing node %s", want)
 		}
 	}
-	// [from:日志] inside MEMORY.md is the diary feeding long-term memory.
-	if !graphHasEdge(out, "daily", "core:memory", "promotion") {
-		t.Errorf("promotion edge daily→core:memory missing: %v", out["edges"])
+	// [from:日志] inside MEMORY.md is the diary feeding long-term memory —
+	// two promoted entries make the edge twice as strong.
+	if w := graphEdgeWeight(out, "daily", "core:memory", "promotion"); w != 2 {
+		t.Errorf("promotion weight = %d, want 2: %v", w, out["edges"])
 	}
-	// MEMORY.md naming "work" is a reference edge to the topic.
-	if !graphHasEdge(out, "core:memory", "topic:work", "reference") {
-		t.Errorf("reference edge core:memory→topic:work missing: %v", out["edges"])
+	// MEMORY.md naming "work" twice is a reference edge with weight 2.
+	if w := graphEdgeWeight(out, "core:memory", "topic:work", "reference"); w != 2 {
+		t.Errorf("reference weight = %d, want 2: %v", w, out["edges"])
+	}
+	// A surface naming a core file is an honest reference edge.
+	if !graphHasEdge(out, "core:memory", "core:user", "reference") {
+		t.Errorf("reference edge core:memory→core:user missing: %v", out["edges"])
+	}
+	// A skill's description naming a topic links skill→topic.
+	if !graphHasEdge(out, "skill:work-report", "topic:work", "reference") {
+		t.Errorf("reference edge skill:work-report→topic:work missing: %v", out["edges"])
+	}
+}
+
+// The response must be byte-identical across requests — edges dedup through a
+// map, so any ordering leak would surface as flaky diffs in the UI and tests.
+func TestMemoryGraphDeterministic(t *testing.T) {
+	h, cfg := newMemoryPanel(t)
+	hermes := memory.NewHermesWithLimits(cfg.Storage.MemoryPath, memory.Limits{})
+	if err := hermes.SaveMemory(memory.MemFile{Entries: []string{
+		"alpha " + memory.PromotionSourceTag,
+		"mentions beta-topic",
+	}}); err != nil {
+		t.Fatal(err)
+	}
+	if err := hermes.SaveTopic("beta-topic", memory.MemFile{Entries: []string{"x"}}); err != nil {
+		t.Fatal(err)
+	}
+	var first []byte
+	for i := 0; i < 5; i++ {
+		rec := httptest.NewRecorder()
+		h.ServeHTTP(rec, authedReq(http.MethodGet, "/api/memory/graph", nil))
+		if rec.Code != http.StatusOK {
+			t.Fatalf("status = %d, want 200", rec.Code)
+		}
+		if first == nil {
+			first = append([]byte(nil), rec.Body.Bytes()...)
+			continue
+		}
+		if !bytes.Equal(first, rec.Body.Bytes()) {
+			t.Fatalf("request %d returned different bytes:\n%s\n%s", i, first, rec.Body.Bytes())
+		}
 	}
 }
 

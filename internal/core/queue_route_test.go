@@ -76,6 +76,11 @@ func TestScheduledTaskRoutesByHardware(t *testing.T) {
 	if pi.forwardScheduled(ctx, enqueued([]string{"gpu:train"}, "")) {
 		t.Error("a task the Pi can run, on an idle Pi, was shipped to a peer anyway")
 	}
+
+	// The two forwarded stages execute on win asynchronously; let them reach
+	// done before the test returns so its workdir TempDir is not unlinked
+	// mid-write (observed flake: "directory not empty" in RemoveAll).
+	waitLocalTasksSettled(t, win)
 }
 
 // A task pinned to a directory on this machine is local work by definition: the

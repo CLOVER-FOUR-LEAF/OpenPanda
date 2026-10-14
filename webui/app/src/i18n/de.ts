@@ -629,6 +629,11 @@ const de: Messages = {
   'settings.sandboxDescNoBackend':
     'Sandbox-Modus ist konfiguriert, aber NICHT wirksam — diese Plattform hat kein Sandbox-Backend (seatbelt/bwrap), Subprozesse laufen unisoliert. Status:',
 
+  'settings.terms': 'Bedingungen & Haftungsausschluss',
+  'settings.termsView': 'Bedingungen lesen',
+  'settings.termsHelp':
+    'Die beim ersten Start gezeigten Lizenz-, Gewährleistungs- und Haftungsbedingungen — jederzeit nachlesbar.',
+
   // Gedächtniskonsole-Erweiterungen (C2)
   'memory.graph': 'Graph',
   'memory.topics': 'Themen',
@@ -645,6 +650,13 @@ const de: Messages = {
   'memory.graph.skill': 'Skills',
   'memory.graph.promotion': 'aus Tagebuch übernommen',
   'memory.graph.reference': 'erwähnt',
+  'memory.graph.zoomIn': 'Vergrößern',
+  'memory.graph.zoomOut': 'Verkleinern',
+  'memory.graph.reset': 'Ansicht zurücksetzen',
+  'memory.graph.hint': 'Rad: Zoom · Ziehen: Verschieben',
+  'memory.graph.entriesN': '{n} Einträge',
+  'memory.graph.charsN': '{n} Zeichen',
+  'memory.graph.filesN': '{n} Dateien',
   'memory.topicsEmpty': 'Noch keine Themendateien.',
   'memory.topicNewPlaceholder': 'neuer Themenname',
   'memory.topicNew': 'Anlegen',
@@ -664,10 +676,25 @@ const de: Messages = {
   'memory.dreamsEditHint': 'Freitext; wird wortwörtlich gespeichert.',
   'memory.fromLog': 'aus Log',
   'memory.fromLogTip': 'Aus den Tageslogs befördert — Signal mit geringem Gewicht; korrigieren oder löschen, falls daneben.',
-  'memory.entryFix': 'Korrigieren',
   'memory.entryDelete': 'Löschen',
   'memory.entryDeleteTitle': 'Diesen Eintrag löschen?',
   'memory.entryDeleteMsg': 'Der Eintrag wird aus der Datei entfernt und ist für den Agenten nicht mehr sichtbar.',
+  'memory.search': 'Einträge filtern…',
+  'memory.noMatches': 'Keine Einträge passen zum Filter.',
+  'memory.add': 'Hinzufügen',
+  'memory.addPlaceholder': 'Neuer Eintrag — wird als §-Eintrag gespeichert',
+  'memory.dailyDelete': 'Tagebuch löschen',
+  'memory.dailyDeleteTitle': 'Diese Tagebuchdatei löschen?',
+  'memory.dailyDeleteMsg': 'daily/{name}.md wird gelöscht — nicht rückgängig zu machen.',
+  'memory.dailyDeleted': 'Tagebuchdatei gelöscht.',
+  'memory.dailyPrune': 'Aufbewahrung anwenden',
+  'memory.dailyPruneTitle': 'Tagebuch-Aufbewahrung jetzt anwenden?',
+  'memory.dailyPruneMsg':
+    'Tagebücher älter als 30 Tage wandern ins Archiv; älter als 90 Tage werden gelöscht. Nicht rückgängig zu machen.',
+  'memory.dailyPruning': 'Wird angewendet…',
+  'memory.dailyPruned': 'Aufbewahrung angewendet.',
+  'memory.dailyRetention':
+    'Aufbewahrung: nach 30 Tagen archiviert, nach 90 gelöscht — der Dreamer räumt auch selbst auf.',
 
   // Geräte- & Knoten-Erweiterungen (C3)
   'nodes.self': 'dieses Gerät',

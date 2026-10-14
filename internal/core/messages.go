@@ -414,6 +414,20 @@ func (c *Core) fanoutTaskMessage(ctx context.Context, m TaskMessage, to string, 
 	if err != nil {
 		return err
 	}
+	// The sender must itself be on this board's roster — the member→owner
+	// wire leg authenticated the sending node, not the task id it claims,
+	// so without this check any reachable node could write slots under a
+	// task that is not part of the scope.
+	inScope := false
+	for _, mm := range members {
+		if mm.taskID == sender.TaskID {
+			inScope = true
+			break
+		}
+	}
+	if !inScope {
+		return fmt.Errorf("sender %s is not a member of scope %s", sender.TaskID, m.Scope)
+	}
 	rcpt, err := resolveMsgRcpt(m, to, members, sender.TaskID)
 	if err != nil {
 		return err

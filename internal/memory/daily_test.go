@@ -70,6 +70,41 @@ func TestDailyPrune(t *testing.T) {
 	}
 }
 
+func TestDailyPruneSweepsArchive(t *testing.T) {
+	dir := filepath.Join(t.TempDir(), "daily")
+	arc := filepath.Join(dir, "archive")
+	d := NewDaily(dir)
+	now := time.Date(2026, 8, 13, 0, 0, 0, 0, time.UTC)
+
+	// The delete window reaches into archive/: an archived log is cooled, not
+	// exempt. A ~45-day archive stays, a ~134-day one goes, non-daily files
+	// are untouched.
+	if err := os.MkdirAll(arc, 0o755); err != nil {
+		t.Fatalf("mkdir: %v", err)
+	}
+	write := func(name, content string) {
+		if err := os.WriteFile(filepath.Join(arc, name), []byte(content), 0o644); err != nil {
+			t.Fatalf("write %s: %v", name, err)
+		}
+	}
+	write("2026-07-01.md", "young archive")
+	write("2026-04-01.md", "old archive")
+	write("README.md", "keep")
+
+	if err := d.Prune(now); err != nil {
+		t.Fatalf("prune: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(arc, "2026-07-01.md")); err != nil {
+		t.Errorf("recent archive should remain: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(arc, "2026-04-01.md")); !os.IsNotExist(err) {
+		t.Errorf("expired archive should be deleted, stat err = %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(arc, "README.md")); err != nil {
+		t.Errorf("non-daily archive file should remain: %v", err)
+	}
+}
+
 func TestDailyPruneMissingDir(t *testing.T) {
 	d := NewDaily(filepath.Join(t.TempDir(), "nope", "daily"))
 	if err := d.Prune(time.Now()); err != nil {

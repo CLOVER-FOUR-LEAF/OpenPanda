@@ -14,6 +14,7 @@ import { Icon, type IconName } from '../components/icons'
 import { t } from '../i18n'
 import { locale, localeNames, locales, setLocale } from '../i18n'
 import { notifyModelSaved } from './onboarding'
+import { TermsModal } from '../components/terms'
 import { onThemeChange, setTheme, theme } from '../theme'
 import { RemindersView } from './reminders'
 import { SystemView } from './system'
@@ -129,9 +130,11 @@ export function SettingsView(props: {
   )
 }
 
-/** General: language + appearance theme (light / dark / follow system). */
+/** General: language + appearance theme (light / dark / follow system) and
+ *  the always-reachable terms & disclaimer viewer. */
 function GeneralSection() {
   const [, force] = useState(0)
+  const [showTerms, setShowTerms] = useState(false)
   useEffect(() => onThemeChange(() => force((v) => v + 1)), [])
 
   return (
@@ -171,6 +174,18 @@ function GeneralSection() {
         </div>
         <p class="hint">{t('settings.themeHelp')}</p>
       </div>
+
+      <div class="field-group">
+        <label>{t('settings.terms')}</label>
+        <div>
+          <button type="button" class="btn" onClick={() => setShowTerms(true)}>
+            {t('settings.termsView')}
+          </button>
+        </div>
+        <p class="hint">{t('settings.termsHelp')}</p>
+      </div>
+
+      {showTerms && <TermsModal onClose={() => setShowTerms(false)} />}
     </div>
   )
 }

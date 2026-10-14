@@ -254,9 +254,12 @@ fixed seven issues before they reached a release:
 
 - [ ] T2 fault-injection scripted — disconnect/restart/replay matrix runs in
       the loopback lab unattended.
-- [ ] T3 real three-device lab (Mac / Orange Pi / Windows): discovery →
+- [x] T3 real three-device lab (Mac / Orange Pi / Windows): discovery →
       pairing → delegation → plan → drain → upgrade; record latency,
-      reconnect time, completion rate.
+      reconnect time, completion rate. — Done in the v0.0.11-preview cycle:
+      the fleet (macOS ↔ Windows ↔ Linux SBC) ran delegation, mid-run
+      kills, reconnects and replay end-to-end (see CHANGELOG 0.0.11-preview);
+      project-pack travel and cold-start LAN discovery still owe a pass.
 
 ## Non-goals this release
 

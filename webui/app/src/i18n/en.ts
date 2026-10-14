@@ -638,6 +638,11 @@ const en: Messages = {
   'settings.sandboxDescNoBackend':
     'Sandbox mode is configured but NOT in effect — this platform has no sandbox backend (seatbelt/bwrap), so subprocesses run unconfined. Status:',
 
+  'settings.terms': 'Terms & disclaimer',
+  'settings.termsView': 'Read the terms',
+  'settings.termsHelp':
+    'The license, warranty and liability terms shown at first setup — readable again any time.',
+
   // Memory console extensions (C2)
   'memory.graph': 'Graph',
   'memory.topics': 'Topics',
@@ -654,6 +659,13 @@ const en: Messages = {
   'memory.graph.skill': 'Skills',
   'memory.graph.promotion': 'promoted from diary',
   'memory.graph.reference': 'names',
+  'memory.graph.zoomIn': 'Zoom in',
+  'memory.graph.zoomOut': 'Zoom out',
+  'memory.graph.reset': 'Reset view',
+  'memory.graph.hint': 'scroll: zoom · drag: pan',
+  'memory.graph.entriesN': '{n} entries',
+  'memory.graph.charsN': '{n} chars',
+  'memory.graph.filesN': '{n} files',
   'memory.topicsEmpty': 'No topic files yet.',
   'memory.topicNewPlaceholder': 'new topic name',
   'memory.topicNew': 'Create',
@@ -673,10 +685,25 @@ const en: Messages = {
   'memory.dreamsEditHint': 'Free-form text; saved verbatim.',
   'memory.fromLog': 'from log',
   'memory.fromLogTip': 'Promoted from the daily logs — low-weight signal; fix or delete it if it is off.',
-  'memory.entryFix': 'Fix',
   'memory.entryDelete': 'Delete',
   'memory.entryDeleteTitle': 'Delete this entry?',
   'memory.entryDeleteMsg': 'The entry is removed from the file and gone for the agent.',
+  'memory.search': 'Filter entries…',
+  'memory.noMatches': 'No entries match this filter.',
+  'memory.add': 'Add',
+  'memory.addPlaceholder': 'New entry — saved as one § entry',
+  'memory.dailyDelete': 'Delete diary',
+  'memory.dailyDeleteTitle': 'Delete this diary file?',
+  'memory.dailyDeleteMsg': 'daily/{name}.md will be deleted — this cannot be undone.',
+  'memory.dailyDeleted': 'Diary file deleted.',
+  'memory.dailyPrune': 'Apply retention',
+  'memory.dailyPruneTitle': 'Apply diary retention now?',
+  'memory.dailyPruneMsg':
+    'Diary files older than 30 days move to the archive; files older than 90 days are deleted. This cannot be undone.',
+  'memory.dailyPruning': 'Applying…',
+  'memory.dailyPruned': 'Retention applied.',
+  'memory.dailyRetention':
+    'Retention: archived after 30 days, deleted after 90 — the Dreamer also sweeps on its own.',
 
   // Devices & nodes extensions (C3)
   'nodes.self': 'this device',
