@@ -63,14 +63,17 @@ func powerShellHost() string {
 // executableFile reports whether path names an existing non-directory file
 // Windows can launch. There is no execute bit on Windows — os.Stat reports
 // 0666/0444 for every file — so runnability is decided by extension, over the
-// same set LookPath/PATHEXT treats as executable.
+// same set LookPath/PATHEXT treats as executable. The deliberate refusal of
+// .cmd/.bat *drivers* lives in driverFileNames, which never generates those
+// names (cmd.exe parses its command line by its own rules — golang/go#27199);
+// agent-CLI shims ARE .cmd/.bat and must pass this check.
 func executableFile(path string) bool {
 	st, err := os.Stat(path)
 	if err != nil || st.IsDir() {
 		return false
 	}
 	switch strings.ToLower(filepath.Ext(path)) {
-	case ".ps1", ".exe", ".com":
+	case ".ps1", ".exe", ".com", ".cmd", ".bat":
 		return true
 	}
 	return false
