@@ -740,6 +740,14 @@ export const api = {
     return request('GET', `/api/tasks/${id}`)
   },
 
+  /** Artifact data plane: the file listing inside the task's output
+   *  archive (a screenshot a computer-use run took, a plan stage's tree).
+   *  The archive and per-file bytes stream through fetchBlob — browsers
+   *  cannot send the Bearer header on <a href>/<img src>. */
+  taskArtifactFiles(id: string): Promise<ArtifactFileList> {
+    return request('GET', `/api/tasks/${encodeURIComponent(id)}/artifact/files`)
+  },
+
   approve(id: string, scope?: ApprovalScope): Promise<ApprovalResult> {
     return request('POST', `/api/tasks/${id}/approve`, scope && scope !== 'once' ? { scope } : undefined)
   },
@@ -1355,6 +1363,37 @@ export interface PlanArtifact {
   stage?: string
   hash: string
   source?: string
+}
+
+export interface ArtifactEntry {
+  path: string
+  mode: number
+  size: number
+}
+
+export interface ArtifactFileList {
+  id: string
+  hash: string
+  entries: ArtifactEntry[]
+}
+
+/** fetchBlob is the binary sibling of request(): same Bearer header and
+ *  401 eviction, but hands back the raw bytes. Downloads and image previews
+ *  need it — an <a href> or <img src> cannot carry Authorization. */
+export async function fetchBlob(path: string): Promise<Blob> {
+  const headers: Record<string, string> = {}
+  const token = currentToken()
+  if (token) headers.Authorization = `Bearer ${token}`
+  const res = await fetch(path, { headers, signal: AbortSignal.timeout(120_000) })
+  if (!res.ok) {
+    if (res.status === 401) {
+      clearToken()
+      unauthorizedListeners.forEach((fn) => fn())
+    }
+    const text = await res.text().catch(() => '')
+    throw new ApiError(res.status, text || res.statusText)
+  }
+  return res.blob()
 }
 
 export interface PlanStage {

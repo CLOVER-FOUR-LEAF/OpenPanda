@@ -655,7 +655,30 @@ func (c *Core) adoptProjectOutput(ctx context.Context, t Task, from, hash string
 // row records the hash and the event says what came back — because the same
 // conflict reality applies: the user may have edited the same files at home.
 func (c *Core) adoptWorktreeOutput(ctx context.Context, t Task, from, hash string) {
-	if hash == "" || c.artifacts == nil || t.WorkDir == "" {
+	if hash == "" || c.artifacts == nil {
+		return
+	}
+	if t.WorkDir == "" {
+		// A bare task (no origin tree) has nowhere for the bytes to land —
+		// but the hash must not die with the result payload. Record it and
+		// pull the archive into this node's pool, so `panda task artifact`
+		// and the console preview can reach what the remote run produced
+		// (a screen-capture actuator's PNG, an agent's report).
+		if err := c.store.SetOutputArtifact(ctx, t.TaskID, hash); err != nil {
+			c.logger.Warn("record task output", "task", t.TaskID, "err", err)
+		}
+		if from != "" && from != c.nodeID {
+			ctx = context.WithoutCancel(ctx)
+			c.goGuarded("pull task artifact "+hash, func() {
+				if _, held := c.artifacts.Has(hash); held {
+					return
+				}
+				if _, err := c.FetchArtifact(ctx, from, t.TaskID, hash); err != nil {
+					c.logger.Warn("pull task artifact", "task", t.TaskID,
+						"hash", hash, "from", from, "err", err)
+				}
+			})
+		}
 		return
 	}
 	dir := t.WorkDir

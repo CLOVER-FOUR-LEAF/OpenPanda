@@ -3,6 +3,8 @@
 package artifact
 
 import (
+	"archive/tar"
+	"compress/gzip"
 	"errors"
 	"fmt"
 	"io"
@@ -403,6 +405,114 @@ func (s *Store) ReadAt(hash string, off int64, buf []byte) (int, bool, error) {
 		return 0, false, err
 	}
 	return n, off+int64(n) >= fi.Size(), nil
+}
+
+// Entries lists the regular files inside a stored archive without unpacking
+// it — the console's artifact view and `panda task artifact --list` answer
+// "what did the task produce" before anyone commits to a download. Directory
+// entries are skipped, matching what Pack records in Manifest.Entries.
+func (s *Store) Entries(hash string) ([]EntryMeta, error) {
+	tr, closer, err := s.openTar(hash)
+	if err != nil {
+		return nil, err
+	}
+	defer closer.Close()
+	var out []EntryMeta
+	for {
+		hdr, err := tr.Next()
+		if errors.Is(err, io.EOF) {
+			return out, nil
+		}
+		if err != nil {
+			return nil, fmt.Errorf("artifact: read tar %s: %w", hash, err)
+		}
+		if hdr.Typeflag != tar.TypeReg {
+			continue
+		}
+		rel, err := safeRel(hdr.Name)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, EntryMeta{
+			Path: filepath.ToSlash(rel),
+			Mode: fileMode(hdr),
+			Size: hdr.Size,
+		})
+	}
+}
+
+// OpenEntry streams one named file out of the stored archive — the console's
+// preview path (a screenshot inside a task's output) reads exactly the bytes
+// it shows without materializing the tree. rel is validated the way unpack
+// validates every name: no traversal, no absolute path. A miss is
+// ErrNotFound. The returned reader yields exactly the entry's bytes and must
+// be closed: it holds the archive stream open.
+func (s *Store) OpenEntry(hash, rel string) (io.ReadCloser, int64, error) {
+	want, err := safeRel(rel)
+	if err != nil {
+		return nil, 0, err
+	}
+	tr, closer, err := s.openTar(hash)
+	if err != nil {
+		return nil, 0, err
+	}
+	for {
+		hdr, err := tr.Next()
+		if errors.Is(err, io.EOF) {
+			closer.Close()
+			return nil, 0, fmt.Errorf("%w: %s has no file %q", ErrNotFound, hash, rel)
+		}
+		if err != nil {
+			closer.Close()
+			return nil, 0, fmt.Errorf("artifact: read tar %s: %w", hash, err)
+		}
+		if hdr.Typeflag != tar.TypeReg {
+			continue
+		}
+		name, err := safeRel(hdr.Name)
+		if err != nil {
+			closer.Close()
+			return nil, 0, err
+		}
+		if name == want {
+			return struct {
+				io.Reader
+				io.Closer
+			}{Reader: tr, Closer: closer}, hdr.Size, nil
+		}
+	}
+}
+
+// openTar opens the stored archive for sequential reading: file → gzip →
+// tar. The returned closer shuts the whole chain; the tar reader reads one
+// entry at a time, so callers that stop early must still close.
+func (s *Store) openTar(hash string) (*tar.Reader, io.Closer, error) {
+	f, err := s.Open(hash)
+	if err != nil {
+		return nil, nil, err
+	}
+	gz, err := gzip.NewReader(f)
+	if err != nil {
+		f.Close()
+		return nil, nil, fmt.Errorf("artifact: gzip reader %s: %w", hash, err)
+	}
+	return tar.NewReader(gz), gzCloser{gz: gz, f: f}, nil
+}
+
+// gzCloser closes the gzip layer and its backing file together — gzip.Close
+// alone leaves the file handle open.
+type gzCloser struct {
+	gz *gzip.Reader
+	f  *os.File
+}
+
+func (c gzCloser) Close() error {
+	err := c.gz.Close()
+	cerr := c.f.Close()
+	if err != nil {
+		return err
+	}
+	return cerr
 }
 
 // Put stores the bytes streamed from r, verifying that they hash to want before

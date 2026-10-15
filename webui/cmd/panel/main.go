@@ -19,6 +19,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/Xustalis/OpenPanda/internal/artifact"
 	"github.com/Xustalis/OpenPanda/internal/askengine"
 	"github.com/Xustalis/OpenPanda/internal/config"
 	"github.com/Xustalis/OpenPanda/internal/core"
@@ -175,9 +176,10 @@ func main() {
 		ReadHeaderTimeout: 10 * time.Second,
 		IdleTimeout:       120 * time.Second,
 		Handler: panel.New(panel.Deps{
-			Store:  store,
-			Engine: engine,
-			DB:     db,
+			Store:     store,
+			Artifacts: artifact.NewStore(cfg.Storage.ArtifactPath, cfg.Storage.ArtifactExtraPaths...),
+			Engine:    engine,
+			DB:        db,
 			Projects: memory.NewProjectsWithLimits(cfg.Storage.ProjectsPath, memory.Limits{
 				User:    cfg.Memory.Limits.User,
 				Memory:  cfg.Memory.Limits.Memory,

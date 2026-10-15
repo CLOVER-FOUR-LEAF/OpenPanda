@@ -10,6 +10,7 @@ import {
 } from '../api/client'
 import { orbitPhaseFromTraces, useTraceForTask } from '../hooks'
 import { navigate } from '../nav'
+import { ArtifactSection } from './artifact'
 import { Icon } from './icons'
 import { latestActivity } from './task-activity'
 
@@ -303,6 +304,12 @@ export default function DecisionOrbit(props: DecisionOrbitProps) {
               onOpenPlan={onOpenPlan}
               onOpenTrail={onOpenTrail}
             />
+          )}
+
+          {/* Task output artifact (screenshots, produced trees) — the
+              console's eye onto what the executor left behind. */}
+          {task?.id && task.plan_meta?.output_artifact && (
+            <ArtifactSection task={task} />
           )}
         </div>
       )}

@@ -1765,6 +1765,19 @@ func (c *Core) finalizeRun(ctx context.Context, taskID string, task Task, plan c
 		} else {
 			outputArtifact = hash
 		}
+	} else if task.Project == "" && task.WorkDir == "" && c.artifacts != nil && dirHasFiles(workDir) {
+		// A bare task runs in its private per-task dir (prepareRunDir's
+		// attachedWorkDir branch): anything it left there IS the output —
+		// an actuator's screenshot, an agent's report file. Packing it is
+		// what lets `panda task artifact` and the panel preview reach the
+		// produced files instead of stranding them under work_path. An
+		// empty dir (a pure-stdout run) packs nothing; a project/pinned
+		// dir is shared ground and is never bulk-packed by this branch.
+		if hash, perr := c.packStageOutput(ctx, task, workDir); perr != nil {
+			c.logger.Warn("pack task output", "task", taskID, "err", perr)
+		} else {
+			outputArtifact = hash
+		}
 	}
 
 	// The supervisor did not accept the result: either work still remains after

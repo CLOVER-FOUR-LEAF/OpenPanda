@@ -33,6 +33,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"sort"
@@ -752,6 +753,21 @@ func (c *Core) fetchStageInputs(ctx context.Context, t Task, workDir string) err
 			"from_stage", in.Stage, "hash", in.Hash)
 	}
 	return nil
+}
+
+// dirHasFiles reports whether root holds at least one regular file — the "is
+// there output to hand back" check before packing a private task dir. Errors
+// and non-regular entries count as no.
+func dirHasFiles(root string) bool {
+	found := false
+	_ = filepath.WalkDir(root, func(_ string, d fs.DirEntry, err error) error {
+		if err == nil && d.Type().IsRegular() {
+			found = true
+			return fs.SkipAll
+		}
+		return nil
+	})
+	return found
 }
 
 // packStageOutput packs the stage's work-dir into the local pool and records the

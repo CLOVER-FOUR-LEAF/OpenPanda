@@ -21,6 +21,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/Xustalis/OpenPanda/internal/artifact"
 	"github.com/Xustalis/OpenPanda/internal/askengine"
 	"github.com/Xustalis/OpenPanda/internal/config"
 	"github.com/Xustalis/OpenPanda/internal/core"
@@ -45,7 +46,11 @@ import (
 // zero-config start → first saved model transition) instead of demanding a
 // process restart.
 type Deps struct {
-	Store        *core.TaskStore
+	Store *core.TaskStore
+	// Artifacts is the node-local artifact pool for the task-output
+	// endpoints (download/list/file preview under /api/tasks/{id}/artifact);
+	// nil leaves the routes registered but answering 503.
+	Artifacts    *artifact.Store
 	Engine       *askengine.Engine
 	EngineHolder *EngineHolder
 	// EngineFn resolves the engine live on every request — for embedders that
@@ -85,6 +90,7 @@ type Deps struct {
 func New(d Deps) http.Handler {
 	h := &handler{
 		store:        d.Store,
+		artifacts:    d.Artifacts,
 		engine:       d.Engine,
 		engines:      d.EngineHolder,
 		engineFn:     d.EngineFn,
@@ -130,6 +136,12 @@ func New(d Deps) http.Handler {
 	mux.HandleFunc("POST /api/tasks/{id}/revert", h.revertTask)
 	mux.HandleFunc("GET /api/tasks/{id}/operations/{operation}", h.getApprovalOperation)
 	mux.HandleFunc("GET /api/tasks/{id}/logs", h.taskLogs)
+	// Task output artifacts: the download/list/preview trio — a screenshot a
+	// computer-use task produced becomes visible here instead of staying a
+	// bare hash on the task row.
+	mux.HandleFunc("GET /api/tasks/{id}/artifact", h.getTaskArtifact)
+	mux.HandleFunc("GET /api/tasks/{id}/artifact/files", h.listTaskArtifact)
+	mux.HandleFunc("GET /api/tasks/{id}/artifact/file", h.getTaskArtifactFile)
 	// The plan plane: read-only views over the tasks that already carry a
 	// plan_id. Starting a plan stays on /api/ask, which classifies and returns
 	// the id; these two are how the console follows one afterwards.
@@ -422,12 +434,16 @@ func clientIP(r *http.Request) string {
 }
 
 type handler struct {
-	store    *core.TaskStore
-	engine   *askengine.Engine        // static engine; last fallback
-	engines  *EngineHolder            // reloadable engine source; nil = static
-	engineFn func() *askengine.Engine // live resolver; preferred over engine
-	db       *sql.DB
-	projects *memory.Projects
+	store *core.TaskStore
+	// artifacts is the node-local artifact pool backing the task-output
+	// endpoints; nil → they answer 503 (a store-less embedder, e.g. a test
+	// that never produced an artifact).
+	artifacts *artifact.Store
+	engine    *askengine.Engine        // static engine; last fallback
+	engines   *EngineHolder            // reloadable engine source; nil = static
+	engineFn  func() *askengine.Engine // live resolver; preferred over engine
+	db        *sql.DB
+	projects  *memory.Projects
 	// projectStore is the project metadata table (work dir, description, the
 	// active pointer). nil on a database from before the projects migration, which
 	// degrades the console to the memory-only project view instead of erroring.

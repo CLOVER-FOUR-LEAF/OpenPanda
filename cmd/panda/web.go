@@ -28,6 +28,7 @@ import (
 	"strconv"
 	"time"
 
+	"github.com/Xustalis/OpenPanda/internal/artifact"
 	"github.com/Xustalis/OpenPanda/internal/askengine"
 	"github.com/Xustalis/OpenPanda/internal/config"
 	"github.com/Xustalis/OpenPanda/internal/core"
@@ -273,6 +274,7 @@ func runWeb(args []string) {
 		IdleTimeout:       120 * time.Second,
 		Handler: panel.New(panel.Deps{
 			Store:        store,
+			Artifacts:    artifact.NewStore(cfg.Storage.ArtifactPath, cfg.Storage.ArtifactExtraPaths...),
 			EngineHolder: engines,
 			DB:           db,
 			Projects:     memory.NewProjectsWithLimits(cfg.Storage.ProjectsPath, memoryLimits(cfg)),

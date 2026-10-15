@@ -42,7 +42,7 @@ type TaskInput struct {
 	ContextType  string
 	ContextHash  string // pre-packed snapshot hash; empty means "pack if applicable"
 	ContextLevel string // pointer|summary|full; empty is derived by packContext
-	RepoPath     string // file-type repo root for auto-packing (MVP: CLI not yet wired)
+	RepoPath     string // file-type repo root for auto-packing (wired by askengine from WorkDir)
 	// WorkDir pins execution to the originating workspace. It is persisted before
 	// routing/execution so concurrent callers never swap the Core's ambient work dir.
 	WorkDir  string
