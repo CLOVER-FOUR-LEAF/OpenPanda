@@ -21,6 +21,21 @@ bin/
 config.yaml
 capabilities.yaml
 
+# Secret material — never committed regardless of where it lands. Force-add
+# (-f) only for deliberate, non-secret fixtures.
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+release-key
+
+# Local lab/test node dirs — scratch configs and their SQLite state live
+# here; the generic config.yaml/data/ rules cover most of it, but the dir
+# itself must never become a commit candidate.
+/.lab-echo/
+/.lab-*/
+
 # Runtime data
 data/
 var/
