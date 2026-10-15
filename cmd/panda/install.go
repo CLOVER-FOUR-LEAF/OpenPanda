@@ -100,6 +100,28 @@ func runInstall(args []string) {
 		}
 	}
 
+	// Reference actuator drivers ride the same layout: drivers/ sits beside
+	// adapters/ in a packaged install, and carddetect resolves it through the
+	// same probe order when it declares hardware:* actuators on the card.
+	if dd := install.BundledDir("drivers"); dd != "" {
+		targetDirs := []string{
+			filepath.Join(filepath.Dir(dir), "drivers"),
+			filepath.Join(filepath.Dir(dir), "share", "openpanda", "drivers"),
+		}
+		if ucd, err := os.UserConfigDir(); err == nil && ucd != "" {
+			targetDirs = append(targetDirs, filepath.Join(ucd, "openpanda", "drivers"))
+		}
+		for _, td := range targetDirs {
+			if !samePath(dd, td) {
+				if err := copyAdaptersDir(dd, td); err != nil {
+					fmt.Fprintln(os.Stderr, "install: copy drivers: "+err.Error())
+				} else {
+					fmt.Println(i18n.Tf(loc, "install.copied", "path", td))
+				}
+			}
+		}
+	}
+
 	// Register on PATH unless suppressed. Idempotent on both platforms.
 	if !*noPath {
 		if install.InPATH(dir) {

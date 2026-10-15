@@ -84,6 +84,8 @@ agents:
 
 # 桌面通知执行器：装上 drivers/panda-notify（或改写成绝对路径）后取消注释。
 # "panda ask 提醒我构建完成" 会产出 action_spec 路由到这里。
+# 注意：`panda detect` 现在会自动探测 drivers/ 下存在的 panda-* 驱动并
+# 直接写进生成的卡 —— 驱动就位时下面这些都无需手写。
 # actuators:
 #   - id: "hardware:notify"
 #     type: "software"
@@ -93,6 +95,33 @@ agents:
 #     tier: 1
 #     command: "panda-notify"
 #     args: ["--title", "{param:title}", "--body", "{param:body}"]
+#
+#   # —— computer-use 眼手对 ——
+#   # 该节点必须有真实图形会话（launchd 用户域/桌面登录；systemd --system
+#   # 或 SSH 会话看不到屏幕）。macOS 还需在系统设置里给终端/panda 授予
+#   # 屏幕录制与辅助功能权限；Linux 需要 xdotool(X11)/ydotool(Wayland)；
+#   # Windows 走内置 powershell 路径。
+#   - id: "hardware:screen_capture"
+#     type: "software"
+#     category: "screen_sensing"   # 屏幕内容的专用类目：它的产物在网内
+#                                 # 只流 mesh 级信任节点（准入/路由/工件
+#                                 # 拉取三道闸）。自定义 actuator id 只要
+#                                 # 用这一类目，运行期标记会自动带上该规则
+#                                 # （trust.send.guarded.screen 可放行）。
+#     capabilities: ["screen", "screenshot", "capture", "gui", "截屏", "屏幕"]
+#     tier: 1                       # 截图只读不改状态；注意图中可能含敏感内容
+#     command: "panda-screen"       # 写出 ./screen-<ts>-<pid>.png 并打印路径
+#   - id: "hardware:gui_input"
+#     type: "software"
+#     category: "gui_control"
+#     interface: "desktop"
+#     capabilities: ["gui", "click", "type", "key", "scroll", "mouse", "keyboard", "点击", "输入"]
+#     tier: 2                       # 点击/按键不可逆：默认要审批
+#     command: "panda-input"
+#     args: ["{action}", "{param:args}"]
+#     # 调用契约：{"action":"click","parameters":{"args":"640,400"}}
+#     #   move/click/dblclick → "x,y[,button]"；type → 文本；
+#     #   key → "ctrl+c"/"Return"；scroll → "up|down[,n]"；pos → ""。
 
 capacity:
   cpu_cores: 8

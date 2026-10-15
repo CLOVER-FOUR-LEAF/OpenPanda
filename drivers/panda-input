@@ -1,0 +1,338 @@
+#!/bin/sh
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# panda-input — OpenPanda reference actuator driver for desktop input.
+#
+# Usage:
+#   panda-input <verb> [args...]
+#
+# Verbs:
+#   move x,y                    absolute pointer move
+#   click x,y[,button[,times]]  move + click (button left|middle|right; times n)
+#   dblclick x,y[,button]
+#   type <text>                 type literal text
+#   key <spec>                  key or combo: Return | Escape | ctrl+c |
+#                               alt+tab | cmd+space | shift+F5 …
+#                               (mods: ctrl, alt|option, shift, cmd|meta|win)
+#   scroll dir[,n]              wheel: up|down|left|right, n steps (default 3)
+#   pos                         print current pointer position "x,y"
+#
+# This is the "hands" half of computer use: pair it with panda-screen —
+# capture, reason, click/type, capture again. Every verb is a real user-
+# visible side effect and most are irreversible (a sent message stays sent):
+# declare this actuator tier 2 in the capability card.
+#
+# Backends:
+#   macOS   : cliclick (mouse) + osascript (keyboard)
+#   X11     : xdotool
+#   Wayland : ydotool + wtype (best effort; scroll unsupported)
+#   Windows : powershell SendInput/SendKeys (git-bash / MSYS)
+#
+# Exit codes: 0 ok · 2 bad arguments · 3 no input backend · 4 verb
+# unsupported on this backend · 1 action error.
+
+set -eu
+
+usage() {
+    cat >&2 <<'EOF'
+panda-input <verb> [args]
+  move x,y                     click x,y[,button[,times]]    dblclick x,y[,button]
+  type <text>                  key <combo>                   scroll dir[,n]
+  pos
+buttons: left (default) | middle | right      scroll dirs: up down left right
+EOF
+}
+
+[ $# -ge 1 ] || { usage; exit 2; }
+verb=$1; shift
+
+os=$(uname -s 2>/dev/null || echo unknown)
+
+# --- arg parsing -----------------------------------------------------------
+
+xy() { # "x,y" -> "x y"; integer coords only
+    case $1 in
+        *,*) ;;
+        *) echo "panda-input: want x,y got '$1'" >&2; exit 2 ;;
+    esac
+    x=${1%%,*}; y=${1##*,}
+    case $x$y in *[!0-9-]*|"") echo "panda-input: bad coords '$1'" >&2; exit 2 ;; esac
+    printf '%s %s' "$x" "$y"
+}
+
+click_parts() { # "x,y[,button[,times]]" -> x y button times
+    a1=${1%%,*}; rest=${1#*,}
+    a2=${rest%%,*}; rest=${rest#*,}
+    btn=left; times=1
+    if [ "$rest" != "$a2" ]; then
+        case $rest in
+            *,*) btn=${rest%%,*}; times=${rest##*,} ;;
+            *)   btn=$rest ;;
+        esac
+    fi
+    case $btn in left|middle|right) ;; *) echo "panda-input: bad button '$btn'" >&2; exit 2 ;; esac
+    case $times in ''|*[!0-9]*) echo "panda-input: bad times '$times'" >&2; exit 2 ;; esac
+    printf '%s %s %s %s' "$a1" "$a2" "$btn" "$times"
+}
+
+# normalize_key_spec <spec> -> "mods keyname" on stdout, e.g. "ctrl alt c".
+# Mod names normalized to: ctrl alt shift cmd.
+normalize_key_spec() {
+    spec=$(printf '%s' "$1" | tr 'A-Z' 'a-z' | tr -d ' ')
+    mods=""
+    while :; do
+        case $spec in
+            ctrl+*|control+*) mods="$mods ctrl";  spec=${spec#*+} ;;
+            alt+*|option+*)   mods="$mods alt";   spec=${spec#*+} ;;
+            shift+*)          mods="$mods shift"; spec=${spec#*+} ;;
+            cmd+*|meta+*|win+*|super+*) mods="$mods cmd"; spec=${spec#*+} ;;
+            *) break ;;
+        esac
+    done
+    # canonical names for the backends that take names
+    case $spec in
+        return|enter) key=Return ;;
+        esc)          key=Escape ;;
+        space|' ')    key=space ;;
+        del)          key=Delete ;;
+        ins)          key=Insert ;;
+        pgup)         key=Page_Up ;;
+        pgdn)         key=Page_Down ;;
+        up)    key=Up ;; down)  key=Down ;;
+        left)  key=Left ;; right) key=Right ;;
+        *)            key=$spec ;;
+    esac
+    [ -n "$key" ] || { echo "panda-input: empty key spec" >&2; exit 2; }
+    printf '%s|%s' "${mods# }" "$key"
+}
+
+# --- backend selection -------------------------------------------------------
+
+BACKEND=""
+if [ "$os" = "Darwin" ]; then
+    if command -v cliclick >/dev/null 2>&1 || command -v osascript >/dev/null 2>&1; then
+        BACKEND=mac
+    fi
+elif [ "$os" = "Linux" ]; then
+    [ -z "${DISPLAY:-}" ] && [ -S /tmp/.X11-unix/X0 ] && export DISPLAY=:0
+    [ -z "${WAYLAND_DISPLAY:-}" ] && [ -S "${XDG_RUNTIME_DIR:-/run/user/$(id -u)}/wayland-0" ] && export WAYLAND_DISPLAY=wayland-0
+    if [ -n "${WAYLAND_DISPLAY:-}" ] && command -v ydotool >/dev/null 2>&1; then
+        BACKEND=ydotool
+    elif command -v xdotool >/dev/null 2>&1 && [ -n "${DISPLAY:-}" ]; then
+        BACKEND=xdotool
+    fi
+elif command -v powershell >/dev/null 2>&1 || command -v pwsh >/dev/null 2>&1; then
+    BACKEND=win
+    PS=powershell; command -v powershell >/dev/null 2>&1 || PS=pwsh
+fi
+
+# macOS splits work across cliclick (mouse) and osascript (keyboard): either
+# alone is useful — a missing cliclick must not block `type`/`key`.
+need() {
+    if [ "$BACKEND" = mac ] && [ "$1" = mouse ]; then
+        command -v cliclick >/dev/null 2>&1 || {
+            echo "panda-input: this verb needs cliclick (brew install cliclick)" >&2; exit 3; }
+    fi
+}
+
+[ -n "$BACKEND" ] || {
+    echo "panda-input: no input backend — want xdotool (X11), ydotool (Wayland), cliclick/osascript (macOS), or powershell (Windows); also check the task runs inside a graphical session" >&2
+    exit 3
+}
+
+# --- macOS -----------------------------------------------------------------
+
+mac_key() { # normalized "mods|key" -> osascript keystroke/key code
+    mods=${1%%|*}; key=${1##*|}
+    using=""
+    for m in $mods; do
+        case $m in
+            ctrl)  using="$using, control down" ;;
+            alt)   using="$using, option down" ;;
+            shift) using="$using, shift down" ;;
+            cmd)   using="$using, command down" ;;
+        esac
+    done
+    using=${using#, }
+    # named keys -> key codes; single chars -> keystroke
+    case $key in
+        Return)   code=36 ;; Tab)     code=48 ;; space)  code=49 ;;
+        Delete)   code=51 ;; Escape)  code=53 ;; Left)   code=123 ;;
+        Right)    code=124 ;; Down)   code=125 ;; Up)    code=126 ;;
+        F1)  code=122 ;; F2)  code=120 ;; F3)  code=99  ;; F4)  code=118 ;;
+        F5)  code=96  ;; F6)  code=97  ;; F7)  code=98  ;; F8)  code=100 ;;
+        F9)  code=101 ;; F10) code=109 ;; F11) code=103 ;; F12) code=111 ;;
+        Home) code=115 ;; End) code=119 ;;
+        Page_Up) code=116 ;; Page_Down) code=121 ;;
+        *) code="" ;;
+    esac
+    if [ -n "$code" ]; then
+        stmt="key code $code"
+    elif [ "${#key}" = 1 ]; then
+        stmt="keystroke \"$key\""
+    else
+        echo "panda-input: unknown key '$key' for macOS backend" >&2; exit 2
+    fi
+    [ -n "$using" ] && stmt="$stmt using {$using}"
+    osascript -e "tell application \"System Events\" to $stmt"
+}
+
+# --- Windows ---------------------------------------------------------------
+
+# WIN_CODES: virtual-key codes used by the powershell SendInput path.
+win_key_send() { # normalized "mods|key" -> SendKeys string (single app focus)
+    mods=${1%%|*}; key=${1##*|}
+    sk=""
+    for m in $mods; do
+        case $m in ctrl) sk="$sk^" ;; alt) sk="$sk%" ;; shift) sk="$sk+" ;; esac
+    done
+    # cmd/super has no SendKeys modifier — needs real SendInput; refuse loudly.
+    case $mods in *cmd*) echo "panda-input: Windows 'cmd/win' modifier needs SendInput, unsupported by SendKeys path" >&2; exit 4 ;; esac
+    case $key in
+        Return) sk="$sk{ENTER}" ;; Tab) sk="$sk{TAB}" ;; Escape) sk="$sk{ESC}" ;;
+        space) sk="$sk " ;; Delete) sk="$sk{DEL}" ;; Insert) sk="$sk{INS}" ;;
+        Up) sk="$sk{UP}" ;; Down) sk="$sk{DOWN}" ;; Left) sk="$sk{LEFT}" ;; Right) sk="$sk{RIGHT}" ;;
+        Home) sk="$sk{HOME}" ;; End) sk="$sk{END}" ;;
+        Page_Up) sk="$sk{PGUP}" ;; Page_Down) sk="$sk{PGDN}" ;;
+        BackSpace|backspace) sk="$sk{BS}" ;;
+        F*) sk="$sk{$key}" ;;
+        *) sk="$sk$key" ;;
+    esac
+    printf '%s' "$sk"
+}
+
+win_escape_sendkeys() { # escape SendKeys metachars in literal text
+    printf '%s' "$1" | sed 's/\([+^%~(){}\[\]]\)/{\1}/g'
+}
+
+# --- verbs -------------------------------------------------------------------
+
+case $verb in
+move)
+    [ $# -eq 1 ] || { usage; exit 2; }
+    set -- $(xy "$1")
+    case $BACKEND in
+        mac)     need mouse; cliclick "m:$1,$2" ;;
+        xdotool) xdotool mousemove "$1" "$2" ;;
+        ydotool) ydotool mousemove --absolute --xpos "$1" --ypos "$2" 2>/dev/null \
+                 || ydotool mousemove -a -x "$1" -y "$2" ;;
+        win)     "$PS" -NoProfile -NonInteractive -Command \
+                 "Add-Type -AssemblyName System.Windows.Forms; [System.Windows.Forms.Cursor]::Position = New-Object System.Drawing.Point($1,$2)" ;;
+    esac ;;
+
+click|dblclick)
+    [ $# -eq 1 ] || { usage; exit 2; }
+    set -- $(click_parts "$1")
+    [ "$verb" = dblclick ] && set -- "$1" "$2" "$3" 2
+    case $BACKEND in
+        mac)
+            need mouse
+            if [ "$3" != left ]; then
+                case $3 in
+                    right)  kind=rc ;; middle) kind=mc ;;
+                esac
+                n=0; while [ $n -lt "$4" ]; do cliclick "$kind:$1,$2"; n=$((n+1)); done
+            elif [ "$4" -gt 1 ]; then
+                n=0; while [ $n -lt "$4" ]; do cliclick "c:$1,$2"; n=$((n+1)); done
+            else
+                cliclick "c:$1,$2"
+            fi ;;
+        xdotool)
+            case $3 in left) b=1 ;; middle) b=2 ;; right) b=3 ;; esac
+            xdotool mousemove "$1" "$2" click --repeat "$4" "$b" ;;
+        ydotool)
+            case $3 in left) b=0x110 ;; middle) b=0x112 ;; right) b=0x111 ;; esac
+            ydotool mousemove --absolute --xpos "$1" --ypos "$2" 2>/dev/null \
+                || ydotool mousemove -a -x "$1" -y "$2" 2>/dev/null || true
+            n=0; while [ $n -lt "$4" ]; do ydotool click "$b"; n=$((n+1)); done ;;
+        win)
+            case $3 in left) dn=0x0002; up=0x0004 ;; right) dn=0x0008; up=0x0010 ;; middle) dn=0x0020; up=0x0040 ;; esac
+            PANDA_N=$4 "$PS" -NoProfile -NonInteractive -Command "
+                Add-Type -AssemblyName System.Windows.Forms
+                [System.Windows.Forms.Cursor]::Position = New-Object System.Drawing.Point($1,$2)
+                \$sig = '[System.Runtime.InteropServices.DllImport(\"user32.dll\")] public static extern void mouse_event(uint f, uint x, uint y, uint d, System.IntPtr e);'
+                \$t = Add-Type -MemberDefinition \$sig -Name ME -Namespace W -PassThru
+                1..\$env:PANDA_N | ForEach-Object { \$t::mouse_event($dn,0,0,0,[System.IntPtr]::Zero); \$t::mouse_event($up,0,0,0,[System.IntPtr]::Zero) }
+            " ;;
+    esac ;;
+
+type)
+    [ $# -ge 1 ] || { usage; exit 2; }
+    text=$*
+    case $BACKEND in
+        mac)
+            if command -v cliclick >/dev/null 2>&1; then
+                cliclick "t:$text"
+            else
+                PANDA_TEXT="$text" osascript -e 'tell application "System Events" to keystroke (system attribute "PANDA_TEXT")'
+            fi ;;
+        xdotool) xdotool type -- "$text" ;;
+        ydotool)
+            if command -v wtype >/dev/null 2>&1; then wtype -- "$text";
+            else ydotool type -- "$text"; fi ;;
+        win)
+            esc=$(win_escape_sendkeys "$text")
+            PANDA_SK="$esc" "$PS" -NoProfile -NonInteractive -Command \
+                'Add-Type -AssemblyName System.Windows.Forms; [System.Windows.Forms.SendKeys]::SendWait($env:PANDA_SK)' ;;
+    esac ;;
+
+key)
+    [ $# -eq 1 ] || { usage; exit 2; }
+    nk=$(normalize_key_spec "$1")
+    mods=${nk%%|*}; key=${nk##*|}
+    case $BACKEND in
+        mac) mac_key "$nk" ;;
+        xdotool)
+            combo=""
+            for m in $mods; do
+                case $m in cmd) m=super ;; esac
+                combo="$combo$m+"
+            done
+            xdotool key "$combo$key" ;;
+        ydotool)
+            combo=""
+            for m in $mods; do
+                case $m in cmd) m=super ;; esac
+                combo="$combo$m+"
+            done
+            ydotool key "$combo$key" ;;
+        win)
+            PANDA_SK=$(win_key_send "$nk") || exit $?
+            PANDA_SK="$PANDA_SK" "$PS" -NoProfile -NonInteractive -Command \
+                'Add-Type -AssemblyName System.Windows.Forms; [System.Windows.Forms.SendKeys]::SendWait($env:PANDA_SK)' ;;
+    esac ;;
+
+scroll)
+    [ $# -eq 1 ] || { usage; exit 2; }
+    dir=${1%%,*}; n=3
+    case $1 in *,*) n=${1##*,} ;; esac
+    case $n in ''|*[!0-9]*) echo "panda-input: bad scroll count '$n'" >&2; exit 2 ;; esac
+    case $dir in up|down|left|right) ;; *) echo "panda-input: bad scroll dir '$dir'" >&2; exit 2 ;; esac
+    case $BACKEND in
+        mac)
+            echo "panda-input: scroll unsupported on macOS backend (no global wheel API in cliclick/osascript)" >&2; exit 4 ;;
+        xdotool)
+            case $dir in up) b=4 ;; down) b=5 ;; left) b=6 ;; right) b=7 ;; esac
+            xdotool click --repeat "$n" "$b" ;;
+        ydotool)
+            echo "panda-input: scroll unsupported on Wayland/ydotool backend" >&2; exit 4 ;;
+        win)
+            case $dir in up) delta=$((120*n)) ;; down) delta=$((-120*n)) ;; *)
+                echo "panda-input: horizontal scroll unsupported on Windows backend" >&2; exit 4 ;; esac
+            PANDA_D=$delta "$PS" -NoProfile -NonInteractive -Command '
+                $sig = "[System.Runtime.InteropServices.DllImport(\"user32.dll\")] public static extern void mouse_event(uint f, uint x, uint y, int d, System.IntPtr e);"
+                $t = Add-Type -MemberDefinition $sig -Name MW -Namespace W -PassThru
+                $t::mouse_event(0x0800, 0, 0, [int]$env:PANDA_D, [System.IntPtr]::Zero)' ;;
+    esac ;;
+
+pos)
+    case $BACKEND in
+        mac)     need mouse; cliclick p | tr -d ' ' ;;
+        xdotool) eval "$(xdotool getmouselocation --shell)"; printf '%s,%s\n' "$X" "$Y" ;;
+        ydotool) echo "panda-input: pos unsupported on Wayland/ydotool backend" >&2; exit 4 ;;
+        win)     "$PS" -NoProfile -NonInteractive -Command \
+                 'Add-Type -AssemblyName System.Windows.Forms; $p=[System.Windows.Forms.Cursor]::Position; "{0},{1}" -f $p.X,$p.Y' ;;
+    esac ;;
+
+-h|--help|help) usage ;;
+*) echo "panda-input: unknown verb '$verb'" >&2; usage; exit 2 ;;
+esac
