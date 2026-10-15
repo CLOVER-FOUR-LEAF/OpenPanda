@@ -50,8 +50,7 @@ lite 包（`panda-<ver>-lite-linux-<arch>.tar.gz`）去掉了内嵌 Web 控制�
 ## 2. macOS Homebrew
 
 ```bash
-brew tap Xustalis/openpanda
-brew install openpanda
+brew install Xustalis/openpanda/openpanda
 ```
 
 配方 `deploy/homebrew/openpanda.rb` 从 GitHub Release 拉取二进制与适配器，自适应 Apple Silicon（arm64）与 Intel（amd64）。

@@ -6,7 +6,7 @@ OpenPanda をより良くすることに関心をお寄せいただき、あり�
 
 | ツール  | バージョン | 用途                          |
 | ------- | ---------- | ----------------------------- |
-| Go      | ≥ 1.26.5 | カーネル、CLI、パネル、テスト |
+| Go      | ≥ 1.26.9 | カーネル、CLI、パネル、テスト |
 | Node.js | ≥ 18       | Web コンソール（`webui/app`） |
 | Python  | ≥ 3.10     | 音声サイドカー、Agent アダプタ |
 
@@ -15,7 +15,7 @@ OpenPanda をより良くすることに関心をお寄せいただき、あり�
 ```bash
 git clone https://github.com/Xustalis/OpenPanda
 cd openpanda
-make run            # 設定例を使用してデーモンを起動
+make run            # ソースから config.yaml でデーモンを起動
 make web            # コンソールを webui/panel/dist にビルド（go:embed）
 make build-webui    # コンソールを埋め込んだ単体パネル・サイドカーをビルド
 ```
@@ -33,12 +33,12 @@ panda repl          # スラッシュコマンド：/tasks /approve /projects /n
 プルリクエストは**すべての**ゲートがグリーンになった時のみマージされます。push する前にローカルで実行してください：
 
 ```bash
-make gate           # build + vet + test + race（マージゲート）
-gofmt -l internal/ cmd/ adapters/ webui/panel/   # 何も出力してはならない
+make gate           # fmt-check + vet + build + adapter-test + test + race-focused
+make gate-all       # gate + web-gate + 二つの TUI pty 契約チェック
 cd webui/app && npm run typecheck                # Web コンソール変更時
 ```
 
-CI は同じチェックを並行ジョブとして実行します——`lint`（gofmt + vet）、`test`、`race`（`make race-focused` により並行ホットスポットのパッケージに限定）、`web`（typecheck + node テスト + 埋め込みコンソールのビルド）、そしてクロスプラットフォームマトリクス——そのうえで、この完全な `make gate` が引き続きローカルの基準です。どちらもグリーンに保ってください。
+CI は同じチェックを並行ジョブとして実行します——`lint`（gofmt + vet）、`test`、`race`（`make race-focused` により並行ホットスポットのパッケージに限定）、`web`（typecheck + node テスト + 埋め込みコンソールのビルド）、アダプタ契約（`tests/adapter_contract_test.py`）、TUI pty チェック、そしてクロスプラットフォームマトリクス。`make gate` / `make gate-all` がローカルの同等物です——どちらもグリーンに保ってください。
 
 - **`go test -race ./...` が必ず通ること**——カーネルは（ピアレジストリ・タスクストア・SSE ハブといった）並行システムです。レースディテクタの指摘は警告ではなく、リリースブロッカーです。
 - コアモジュール（`internal/core`、`internal/scheduler`、`internal/storage`）は、現実的な範囲で**約 60% 以上のテストカバレッジ**を維持してください。バグ修正には、修正前に失敗するリグレッションテストを添えてください。

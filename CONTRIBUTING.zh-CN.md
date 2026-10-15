@@ -6,7 +6,7 @@
 
 | 工具    | 版本要求 | 用途                          |
 | ------- | -------- | ----------------------------- |
-| Go      | ≥ 1.26.5 | 内核、CLI、控制台、测试       |
+| Go      | ≥ 1.26.9 | 内核、CLI、控制台、测试       |
 | Node.js | ≥ 18     | Web 控制台（`webui/app`）     |
 | Python  | ≥ 3.10   | 语音 sidecar、Agent 适配器    |
 
@@ -15,7 +15,7 @@
 ```bash
 git clone https://github.com/Xustalis/OpenPanda
 cd openpanda
-make run            # 使用示例配置启动守护进程
+make run            # 从源码用 config.yaml 启动守护进程
 make web            # 把控制台构建到 webui/panel/dist（go:embed）
 make build-webui    # 构建独立面板 sidecar（控制台嵌入其中）
 ```
@@ -33,12 +33,12 @@ panda repl          # 斜杠命令：/tasks /approve /projects /nodes /web …
 只有**全部**门槛通过的 PR 才会被合入。推送前请在本地执行：
 
 ```bash
-make gate           # build + vet + test + race（合入门槛）
-gofmt -l internal/ cmd/ adapters/ webui/panel/   # 必须无输出
+make gate           # fmt-check + vet + build + adapter-test + test + race-focused
+make gate-all       # gate + web-gate + 两个 TUI pty 契约检查
 cd webui/app && npm run typecheck                # 改动 Web 控制台时
 ```
 
-CI 以并行任务运行同一套检查——`lint`（gofmt + vet）、`test`、`race`（经 `make race-focused` 限定在并发热点包）、`web`（typecheck + node 测试 + 嵌入控制台构建）以及跨平台矩阵——而这份完整的 `make gate` 仍是本地标准；两者都要保持绿灯。
+CI 以并行任务运行同一套检查——`lint`（gofmt + vet）、`test`、`race`（经 `make race-focused` 限定在并发热点包）、`web`（typecheck + node 测试 + 嵌入控制台构建）、adapter 契约（`tests/adapter_contract_test.py`）、TUI pty 检查以及跨平台矩阵——`make gate` / `make gate-all` 是本地等价物；两者都要保持绿灯。
 
 - **`go test -race ./...` 必须通过**——内核是并发系统（peer 注册、任务存储、SSE 分发）；竞态检测器报出的任何问题都是阻塞性问题，不是警告。
 - 核心模块（`internal/core`、`internal/scheduler`、`internal/storage`）在可行范围内测试覆盖率应保持 **~60% 以上**。Bug 修复请附带回归测试：修复前该测试失败，修复后通过。
