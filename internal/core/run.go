@@ -1791,9 +1791,20 @@ func (c *Core) finalizeRun(ctx context.Context, taskID string, task Task, plan c
 	// Display content travels under the mesh-only rule: flag the result so
 	// every delegator hop stamps its row. The claim-time row stamp covers
 	// actuator runs resolved on this card; taskScreenSensitive covers
-	// requires/spec-declared capture on top.
+	// requires/spec-declared capture and screen-marked inputs on top.
 	screenOut := outputArtifact != "" &&
 		((plan.ActuatorID != "" && c.actuatorIsScreen(plan.ActuatorID)) || c.taskScreenSensitive(task))
+	if screenOut && !task.ScreenOutput {
+		// Keep the executor's own row consistent with the result flag:
+		// resumeOutcomeFor re-serves the stored payload under the row's
+		// stamp, and the serving verdicts for the produced artifact read
+		// this row long after the run that packed it.
+		if err := c.store.SetScreenOutput(ctx, taskID); err != nil {
+			c.logger.Warn("stamp screen output on executor row", "task", taskID, "err", err)
+		} else {
+			task.ScreenOutput = true
+		}
+	}
 
 	// The supervisor did not accept the result: either work still remains after
 	// the round budget ("continue"), or the model answered without a usable

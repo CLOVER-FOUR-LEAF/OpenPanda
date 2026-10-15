@@ -100,12 +100,13 @@ normalize_key_spec() {
     # on Windows.
     case $spec in
         return|enter) key=Return ;;
-        esc)          key=Escape ;;
+        esc|escape)   key=Escape ;;
         space|' ')    key=space ;;
-        del)          key=Delete ;;
-        ins)          key=Insert ;;
-        pgup)         key=Page_Up ;;
-        pgdn)         key=Page_Down ;;
+        del|delete)   key=Delete ;;
+        backspace)    key=BackSpace ;;
+        ins|insert)   key=Insert ;;
+        pgup|pageup)  key=Page_Up ;;
+        pgdn|pagedown|pagedn) key=Page_Down ;;
         up)    key=Up ;; down)  key=Down ;;
         left)  key=Left ;; right) key=Right ;;
         tab)          key=Tab ;;
@@ -170,7 +171,7 @@ mac_key() { # normalized "mods|key" -> osascript keystroke/key code
     # named keys -> key codes; single chars -> keystroke
     case $key in
         Return)   code=36 ;; Tab)     code=48 ;; space)  code=49 ;;
-        Delete)   code=51 ;; Escape)  code=53 ;; Left)   code=123 ;;
+        Delete|BackSpace) code=51 ;; Escape)  code=53 ;; Left)   code=123 ;;
         Right)    code=124 ;; Down)   code=125 ;; Up)    code=126 ;;
         F1)  code=122 ;; F2)  code=120 ;; F3)  code=99  ;; F4)  code=118 ;;
         F5)  code=96  ;; F6)  code=97  ;; F7)  code=98  ;; F8)  code=100 ;;
@@ -245,6 +246,10 @@ click|dblclick)
                     right)  kind=rc ;; middle) kind=mc ;;
                 esac
                 n=0; while [ $n -lt "$4" ]; do cliclick "$kind:$1,$2"; n=$((n+1)); done
+            elif [ "$4" -eq 2 ]; then
+                # Two spaced c: clicks are not a double-click — dc: emits the
+                # real double-click event apps listen for.
+                cliclick "dc:$1,$2"
             elif [ "$4" -gt 1 ]; then
                 n=0; while [ $n -lt "$4" ]; do cliclick "c:$1,$2"; n=$((n+1)); done
             else

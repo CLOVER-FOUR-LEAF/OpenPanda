@@ -414,6 +414,14 @@ type ArtifactRef struct {
 	// to look up the signing key in the peer directory.
 	Grant  string `json:"grant,omitempty"`
 	Issuer string `json:"issuer,omitempty"`
+	// Screen marks the referenced artifact as display content (the producing
+	// stage drove a screen_sensing actuator). The orchestrator stamps it from
+	// the producer's row so every hop downstream — routing, admission, the
+	// serving verdict on a node that never saw the producer's row — can bind
+	// the bytes to the mesh-only rule. Like the result flag it only narrows
+	// an audience: a forged mark shrinks who may hold the input, it cannot
+	// widen one.
+	Screen bool `json:"screen,omitempty"`
 }
 
 // TitleOrDefault returns the explicit title, falling back to the intent.

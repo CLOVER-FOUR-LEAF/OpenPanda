@@ -128,10 +128,10 @@ export function ArtifactSection(props: { task: Task }) {
         <div class="artifact-body">
           {loading && <div class="muted">{t('artifact.loading')}</div>}
           {err && <div class="artifact-error">{err}</div>}
-          {list && list.entries.length === 0 && <div class="muted">{t('artifact.empty')}</div>}
-          {list && list.entries.length > 0 && (
+          {list && (list.entries ?? []).length === 0 && <div class="muted">{t('artifact.empty')}</div>}
+          {list && (list.entries ?? []).length > 0 && (
             <ul class="artifact-list">
-              {list.entries.map((e) => (
+              {(list.entries ?? []).map((e) => (
                 <li key={e.path}>
                   <button
                     type="button"

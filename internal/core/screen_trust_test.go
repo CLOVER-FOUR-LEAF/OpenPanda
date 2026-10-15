@@ -4,6 +4,7 @@ package core
 
 import (
 	"context"
+	"encoding/json"
 	"testing"
 
 	"github.com/Xustalis/OpenPanda/internal/bus"
@@ -223,6 +224,105 @@ func TestScreenSensitiveCustomActuator(t *testing.T) {
 	spec := `{"action_spec":{"target_actuator":"acme:display_grab","action":"grab"}}`
 	if !c.taskScreenSensitive(Task{SpecJSON: spec}) {
 		t.Fatal("spec-targeted custom screen actuator not recognized on own card")
+	}
+}
+
+// TestScreenInputProvenance: a screen stage's output handed to the next
+// stage stays display-bound end to end — the orchestrator stamps the mark
+// on the input ref, every needs surface gates the consumer to mesh, and the
+// serving verdict on a node holding only the consumer's row still
+// recognizes the input hash as display content.
+func TestScreenInputProvenance(t *testing.T) {
+	ctx := context.Background()
+	c := pinCore(t, "self", "marker")
+
+	participantTask(t, c, "t-prod", "origin", []string{"origin", "self", "guarded-pal"})
+	participantTask(t, c, "t-plain", "origin", []string{"origin", "self", "guarded-pal"})
+	if _, err := c.db.Exec(
+		`UPDATE tasks SET output_artifact='h-shot', screen_output=1 WHERE task_id='t-prod'`); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := c.db.Exec(
+		`UPDATE tasks SET output_artifact='h-plain' WHERE task_id='t-plain'`); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := c.db.Exec(
+		`INSERT INTO employee_cache (id, trust) VALUES ('guarded-pal', 'guarded'), ('guarded-exec', 'guarded'), ('mesh-exec', '')`); err != nil {
+		t.Fatal(err)
+	}
+	dep, err := c.store.Get(ctx, "t-prod")
+	if err != nil {
+		t.Fatal(err)
+	}
+	plainDep, err := c.store.Get(ctx, "t-plain")
+	if err != nil {
+		t.Fatal(err)
+	}
+	consumer := Task{TaskID: "t-cons", PlanID: "p1"}
+
+	// The ref carries the producer's screen provenance; a plain stage's
+	// does not.
+	refs, err := c.planStageInputs(ctx, consumer, map[string]Task{"shot": dep}, []string{"shot"})
+	if err != nil || len(refs) != 1 {
+		t.Fatalf("planStageInputs = %v, %v", refs, err)
+	}
+	if !refs[0].Screen {
+		t.Fatal("screen stage's output ref missing the provenance mark")
+	}
+	plainRefs, err := c.planStageInputs(ctx, consumer, map[string]Task{"p": plainDep}, []string{"p"})
+	if err != nil || len(plainRefs) != 1 {
+		t.Fatalf("planStageInputs plain = %v, %v", plainRefs, err)
+	}
+	if plainRefs[0].Screen {
+		t.Fatal("plain stage's output ref wrongly stamped screen")
+	}
+
+	// Every needs surface reads the mark off the ref alone.
+	p := bus.TaskDelegatePayload{TaskID: "t-cons", Inputs: refs}
+	if !trust.NeedsOf(p).Screen {
+		t.Fatal("NeedsOf missed the input screen mark")
+	}
+	row := Task{TaskID: "t-cons", Inputs: refs}
+	if !needsForTask(row).Screen {
+		t.Fatal("needsForTask missed the input screen mark")
+	}
+	if !c.taskScreenSensitive(row) {
+		t.Fatal("taskScreenSensitive missed the input screen mark")
+	}
+
+	// The consumer routes mesh-only — its working tree will hold display
+	// bytes — and a sub-mesh origin cannot commission it.
+	got := c.eligibleForSend(ctx, needsForTask(row), []ledger.Node{{ID: "guarded-exec"}, {ID: "mesh-exec"}})
+	if len(got) != 1 || got[0].ID != "mesh-exec" {
+		t.Fatalf("consumer eligibility = %v, want [mesh-exec]", got)
+	}
+	if v := c.admitDelegate(ctx, "t-cons", p, nil, "guarded-pal"); v.admit || v.review {
+		t.Fatalf("guarded origin + screen input = %+v, want refused", v)
+	}
+	if v := c.admitDelegate(ctx, "t-cons", p, nil, "mesh-pal"); !v.admit {
+		t.Fatalf("mesh origin + screen input = %+v, want admit", v)
+	}
+
+	// The serving verdict on a node holding only the consumer's row (the
+	// producer's row lives upstream) still binds the input hash to the
+	// mesh-only rule — and an unmarked input stays ordinary material.
+	participantTask(t, c, "t-cons", "origin", []string{"origin", "self", "guarded-pal"})
+	inputsJSON, _ := json.Marshal(refs)
+	if _, err := c.db.Exec(`UPDATE tasks SET input_artifacts_json=? WHERE task_id='t-cons'`, inputsJSON); err != nil {
+		t.Fatal(err)
+	}
+	if c.artifactTransferAuthorized(ctx, "t-cons", "h-shot", "guarded-pal", nil) {
+		t.Fatal("guarded participant pulled a screen-marked input")
+	}
+	if !c.artifactTransferAuthorized(ctx, "t-cons", "h-shot", "self", nil) {
+		t.Fatal("mesh-tier self refused a screen-marked input")
+	}
+	plainInputs, _ := json.Marshal(plainRefs)
+	if _, err := c.db.Exec(`UPDATE tasks SET input_artifacts_json=? WHERE task_id='t-cons'`, plainInputs); err != nil {
+		t.Fatal(err)
+	}
+	if !c.artifactTransferAuthorized(ctx, "t-cons", "h-plain", "guarded-pal", nil) {
+		t.Fatal("guarded participant refused an ordinary input")
 	}
 }
 

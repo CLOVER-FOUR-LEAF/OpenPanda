@@ -265,8 +265,23 @@ func NeedsOf(p bus.TaskDelegatePayload) Needs {
 		Inputs:      len(p.Inputs) > 0 || len(p.BundledArtifacts) > 0 || p.ContextType == "file",
 		FullContext: contextRank(p.ContextLevel) >= 2,
 		Consent:     p.Authorized,
-		Screen:      ScreenSensitiveSpec(p.Requires, p.SpecJSON),
+		// A stage consuming a screen-marked input is itself display-bound:
+		// its working tree (and therefore its output artifact) can embed the
+		// pixels. The ref's mark is what lets an executor apply the mesh-only
+		// ceiling without the producer's row.
+		Screen: ScreenSensitiveSpec(p.Requires, p.SpecJSON) || InputsScreen(p.Inputs),
 	}
+}
+
+// InputsScreen reports whether any declared input ref carries the
+// orchestrator's screen-provenance mark.
+func InputsScreen(refs []bus.ArtifactRef) bool {
+	for _, r := range refs {
+		if r.Screen {
+			return true
+		}
+	}
+	return false
 }
 
 // ScreenSensitiveSpec reports whether the task's declared abilities drive

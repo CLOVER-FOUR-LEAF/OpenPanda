@@ -45,6 +45,7 @@ import (
 	"github.com/Xustalis/OpenPanda/internal/plan"
 	"github.com/Xustalis/OpenPanda/internal/scheduler"
 	"github.com/Xustalis/OpenPanda/internal/scheduler/queue"
+	"github.com/Xustalis/OpenPanda/internal/trust"
 )
 
 // SetStage stamps a task's place in a plan: the plan it belongs to, its stage id
@@ -550,6 +551,11 @@ func (c *Core) planStageInputs(ctx context.Context, consumer Task, byStage map[s
 			return nil, fmt.Errorf("no node known to hold artifact %s of stage %s", dep.OutputArtifact, need)
 		}
 		ref := bus.ArtifactRef{Stage: need, Hash: dep.OutputArtifact, Source: source, OfTask: dep.TaskID}
+		// A screen stage's produced tree is display content wherever it
+		// rides: stamp the provenance mark on the ref so the consumer's
+		// routing, admission and serving verdicts apply the mesh-only rule
+		// without needing the producer's row.
+		ref.Screen = dep.ScreenOutput || trust.ScreenSensitiveSpec(dep.Requires, dep.SpecJSON)
 		if _, priv, ok := c.nodeKeyPair(); ok {
 			ref.Grant = bus.SignArtifactGrant(priv, consumer.PlanID, consumer.TaskID, dep.TaskID, dep.OutputArtifact)
 			ref.Issuer = c.nodeID

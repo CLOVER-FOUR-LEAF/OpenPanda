@@ -25,7 +25,7 @@ import (
 // queue, init) complete flags and files instead.
 var completionVerbs = map[string][]string{
 	"nodes":    {"add", "disconnect", "invite", "remove", "prune", "verify", "admit", "drain", "trust"},
-	"task":     {"add", "priority", "move", "approve", "reject", "cancel", "delete", "revert", "followup", "logs", "show"},
+	"task":     {"add", "priority", "move", "approve", "reject", "cancel", "delete", "revert", "followup", "board", "artifact", "logs", "show"},
 	"plan":     {"run", "show", "example"},
 	"session":  {"list", "new", "show", "mv", "rm", "fork", "tree", "ask", "diff", "merge", "revert"},
 	"skill":    {"list", "approve", "reject", "reset", "find", "import", "hub", "install"},
@@ -45,16 +45,17 @@ var completionVerbs = map[string][]string{
 // completion (config sections, aliases, ids) is deliberately absent: a wrong
 // suggestion is worse than none.
 var completionFlags = map[string][]string{
-	"ask":      {"--authorize", "--continue", "--project", "--output-format", "--config", "--card", "--mcp"},
-	"daemon":   {"--config", "--card"},
-	"queue":    {"--state", "--project", "--watch", "--json"},
-	"task add": {"--title", "--prompt", "--priority", "--project", "--authorize", "--requires", "--agents", "--mode", "--preferred", "--nodes", "--action-spec", "--wait", "--wait-timeout", "--json"},
-	"init":     {"--defaults", "--non-interactive", "--force", "--config", "--card"},
-	"web":      {"--config", "--card"},
-	"plan run": {"--dry-run", "--config", "--card"},
-	"status":   {"--config"},
-	"doctor":   {"--config"},
-	"repl":     {"--config", "--card", "--mcp"},
+	"ask":           {"--authorize", "--continue", "--project", "--output-format", "--config", "--card", "--mcp"},
+	"daemon":        {"--config", "--card"},
+	"queue":         {"--state", "--project", "--watch", "--json"},
+	"task add":      {"--title", "--prompt", "--priority", "--project", "--authorize", "--requires", "--agents", "--mode", "--preferred", "--nodes", "--action-spec", "--wait", "--wait-timeout", "--json"},
+	"task artifact": {"--list", "--file", "--out", "--json"},
+	"init":          {"--defaults", "--non-interactive", "--force", "--config", "--card"},
+	"web":           {"--config", "--card"},
+	"plan run":      {"--dry-run", "--config", "--card"},
+	"status":        {"--config"},
+	"doctor":        {"--config"},
+	"repl":          {"--config", "--card", "--mcp"},
 }
 
 // completionFlagValues maps a flag name to its closed value set — offered

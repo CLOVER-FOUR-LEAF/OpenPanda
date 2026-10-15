@@ -850,22 +850,27 @@ func (c *Core) screenBoundToTask(ctx context.Context, taskID, hash string, grant
 }
 
 // outputHashIsScreen decides the (task,hash) screen verdict on one row:
-// the task drove a screen-capture actuator AND the hash is its produced
-// output rather than declared input material.
+// either the hash is a declared input carrying the delegator's screen mark
+// (display content wherever it moves — this row can rule on the bytes even
+// though it never produced them), or the task is itself screen-sensitive
+// AND the hash is its produced output rather than ordinary input material.
 func (c *Core) outputHashIsScreen(ctx context.Context, t Task, hash string) bool {
-	if hash == "" || !c.taskScreenSensitive(t) {
+	if hash == "" {
 		return false
 	}
 	if t.OutputArtifact == hash {
-		return true
+		return c.taskScreenSensitive(t)
 	}
 	if t.ContextHash == hash {
 		return false // the context snapshot is input-side, not screen content
 	}
 	for _, in := range t.Inputs {
 		if in.Hash == hash {
-			return false
+			return in.Screen
 		}
+	}
+	if !c.taskScreenSensitive(t) {
+		return false
 	}
 	// Indexed under the task but none of its declared inputs/context — the
 	// index row is how a pull or pack bound the produced tree when the
@@ -874,13 +879,16 @@ func (c *Core) outputHashIsScreen(ctx context.Context, t Task, hash string) bool
 	return err == nil && indexed
 }
 
-// taskScreenSensitive reports whether the task drove desktop screen capture.
-// Three signals, in order of how portable the evidence is:
+// taskScreenSensitive reports whether the task's working tree is display
+// content. Four signals, in order of how portable the evidence is:
 //   - the persisted screen_output mark — the executor's runtime stamp
 //     (authoritative for operator-defined actuator ids) plus every
 //     delegator's re-stamp from a flagged task_result;
 //   - a requires token or action_spec target naming the canonical actuator
 //     (or a broad token that could resolve to it);
+//   - a declared input ref carrying the orchestrator's screen mark — a
+//     task fed display bytes can embed them in its produced tree, so the
+//     output inherits the mesh-only rule;
 //   - a screen_sensing actuator on THIS node's card matching a requires
 //     token or the action_spec's target — the producer's own row can
 //     classify its custom ids even if the stamp path was skipped (a
@@ -890,6 +898,9 @@ func (c *Core) taskScreenSensitive(t Task) bool {
 		return true
 	}
 	if trust.ScreenSensitiveSpec(t.Requires, t.SpecJSON) {
+		return true
+	}
+	if trust.InputsScreen(t.Inputs) {
 		return true
 	}
 	return c.screenActuatorMatch(c.Card().Actuators, t.Requires, specTargetActuator(t.SpecJSON))

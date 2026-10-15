@@ -452,7 +452,10 @@ func needsForTask(t Task) trust.Needs {
 	return trust.Needs{
 		Pack:   t.Project != "",
 		Inputs: len(t.Inputs) > 0 || t.ContextType == "file" || t.Project != "",
-		Screen: trust.ScreenSensitiveSpec(t.Requires, t.SpecJSON),
+		// A row already stamped screen_output, or one whose inputs carry the
+		// provenance mark, stays inside the mesh-only ceiling on re-route.
+		Screen: t.ScreenOutput || trust.ScreenSensitiveSpec(t.Requires, t.SpecJSON) ||
+			trust.InputsScreen(t.Inputs),
 	}
 }
 

@@ -417,7 +417,7 @@ func (s *Store) Entries(hash string) ([]EntryMeta, error) {
 		return nil, err
 	}
 	defer closer.Close()
-	var out []EntryMeta
+	out := []EntryMeta{}
 	for {
 		hdr, err := tr.Next()
 		if errors.Is(err, io.EOF) {
