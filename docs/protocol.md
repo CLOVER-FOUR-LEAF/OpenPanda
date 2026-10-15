@@ -237,7 +237,11 @@ hello 校验失败时服务端回 `hello_reject`（`reason`：`auth` 签名/密�
   都不足以放松这一条）；`screen: true` 是同一所有者场景的显式开关。
   运维自定义的 `screen_sensing` 类目 actuator id 静态谓词认不出——
   由执行端认领时的 `screen_output` 运行时打标接力（随 `task_result`
-  逐跳补标，见 `task_result` 节）。
+  逐跳补标，见 `task_result` 节）。屏幕阶段的产物作为下游输入交接
+  时绑定同样成立：`ArtifactRef.screen` 由编排者从生产者行的标记打
+  上，路由（Needs.Screen）、准入与服务判定三面读取——凡消费显示
+  字节的任务自身即为 display-bound（其工作树与产出都可能嵌有像素），
+  标记沿阶段逐级级联；伪造的标记只能收窄受众，与结果标志同向安全。
 
 ### `task_accept` / `task_decline`
 

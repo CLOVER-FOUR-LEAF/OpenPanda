@@ -10,10 +10,9 @@ package version
 // Version is the semantic version of this build, and the default for a build
 // that does not go through release packaging.
 //
-// It tracks the newest tag on main — currently the v0.0.11-preview preview —
-// so ad-hoc builds identify themselves with the branch's latest published
-// lineage.
-var Version = "0.0.11-preview"
+// It tracks the newest tag on main — currently v0.0.11 — so ad-hoc builds
+// identify themselves with the branch's latest published lineage.
+var Version = "0.0.11"
 
 // Codename is the release line's thematic name — v0.0.11 is "Rendezvous", the
 // orbital meeting: sibling tasks exchange notes mid-flight on the message

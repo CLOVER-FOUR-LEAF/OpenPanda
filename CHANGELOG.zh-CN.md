@@ -40,11 +40,15 @@ OpenPanda（**Open** **P**ersonal **A**daptive **N**ode-based **D**istributed **
 
 ## [Unreleased]
 
+## [0.0.11] - 2026-10-15 — "Rendezvous"
+
+稳定版 v0.0.11——代号 **Rendezvous**（轨道交会）。本版将预览线的全部内容收拢——签名 hello 内协商的逐连接 AEAD、蓝牙式配对、签名发现 beacon 与稳定的 `k:<pub>` 身份、跨多跳路由不丢目的地身份的硬节点钉住、部分网状数据面、任务间消息板、以及 agent 工作的 git 回滚——再加上本周期的新增：桌面节点长出了 computer-use 的眼与手（截屏与合成输入成为一等执行器，POSIX 与原生 Windows 通吃）、任务产出可以打包成 artifact 从 CLI 与控制台取回、显示内容端到端走自己专属的 mesh-only 信任规则——跨委派、推送、拉取，以及屏幕阶段的输出作为下一阶段输入被消费的全程。
+
 ### 新增
 
 - **Computer-use 的「眼」与「手」** —— 两个新的参考执行器让带桌面的节点可以承担 GUI 工作：`drivers/panda-screen` 截屏（macOS `screencapture`、Linux grim/scrot/ImageMagick、Windows PowerShell），广告为 `hardware:screen_capture`；`drivers/panda-input` 合成输入（cliclick+osascript / xdotool / ydotool / PowerShell——move、click、dblclick、type、key、scroll、pos），广告为 `hardware:gui_input`，因点击与按键不可逆而归为 tier 2。`DetectActuators` 自动探测 bundled `drivers/` 目录（`OPENPANDA_DRIVERS_DIR` 独占覆盖，其后 PATH，再其后随发行包附带的布局），`panda install` 与发行包均随带驱动；声明 `Interface:"desktop"` 的执行器只在疑似存在 GUI 会话时才被广告——macOS 查 console 属主、Linux 查 `DISPLAY`/`WAYLAND_DISPLAY`、Windows 排除 Services 会话，`OPENPANDA_GUI_SESSION` 可覆盖——无头守护进程不会再虚报一块它看不见的屏幕。路由提示词已教会「截屏 → 理解 → 动作」的链路。
 - **任务产物可取回** —— 裸任务的私有工作目录现在会打包并登记为输出工件（执行器截屏、agent 报告文件不再烂在 `work_path` 下；空目录不产空包，固定/项目目录永不被整包）。取回面：`panda task artifact <id> [--list|--file <路径>|--out <目录>]`、面板三个认证端点（`GET /api/tasks/{id}/artifact`、`/artifact/files`、`/artifact/file?path=`）、控制台 ArtifactSection 列清单 + 图片/文本内联预览 + 单文件或整包下载。`artifact.Store` 新增 `Entries`/`OpenEntry`——不解包列清单、带路径穿越校验的单文件流式读。
-- **[实验性] 截屏任务 mesh 独占** —— 显示内容获得独立的信任位而非沿用普通参与者校验：`requires`/`action_spec` 命中 `hardware:screen_capture`（含 `hardware:*` 等可解析到它的宽令牌）即标记任务；guarded 对端在发送侧被过滤，非 mesh 来源在准入即拒（`trust_policy_refused`），产物服务侧只把屏幕输出放给 mesh 对端——参与关系与签名 grant 都不能放宽。运维自定义的 `screen_sensing` 类目执行器 id 只有生产者本机卡片能归类，因此执行端在认领时写入持久化 `screen_output` 标记（迁移 v45），随 `task_result` 逐跳补标；授权判定缓存记住 screen 位并在每次命中时复检对端档位——信任降级即时切断传输。`network.trust.send.guarded.screen: true` 是同一所有者场景的显式开关。
+- **[实验性] 截屏任务 mesh 独占** —— 显示内容获得独立的信任位而非沿用普通参与者校验：`requires`/`action_spec` 命中 `hardware:screen_capture`（含 `hardware:*` 等可解析到它的宽令牌）即标记任务；guarded 对端在发送侧被过滤，非 mesh 来源在准入即拒（`trust_policy_refused`），产物服务侧只把屏幕输出放给 mesh 对端——参与关系与签名 grant 都不能放宽。运维自定义的 `screen_sensing` 类目执行器 id 只有生产者本机卡片能归类，因此执行端在认领时写入持久化 `screen_output` 标记（迁移 v45），随 `task_result` 逐跳补标；授权判定缓存记住 screen 位并在每次命中时复检对端档位——信任降级即时切断传输。屏幕阶段的输出作为下一阶段的输入被交接时，绑定同样成立：协调方在 input ref 上打下溯源标记，凡消费显示字节的任务自身即被判定为 display-bound——它的工作树、进而它产出的 artifact 都可能嵌有像素——标记沿阶段逐级级联。`network.trust.send.guarded.screen: true` 是同一所有者场景的显式开关。
 - **Windows computer-use 入口** —— `drivers/panda-screen.ps1`、`drivers/panda-input.ps1`、`drivers/panda-notify.ps1` 让「眼/手/通知」三个驱动在原生 Windows 节点上直接可用——与 POSIX 同族脚本同一套 CLI、同一套退出码，不再依赖 git-bash。探测会把它们解析成 `pwsh -File <脚本>`（优先 pwsh，回退系统内置 PowerShell 5.1）；`-File` 把每个参数按字面字符串交给脚本，action_spec 里的文本始终只是文本；`.cmd`/`.bat` 包装刻意不自动解析——cmd.exe 按自己的规则解析命令行，带 `&`、`%` 或引号的参数可能被拆成第二条命令（golang/go#27199）。
 
 ### 修复
