@@ -59,6 +59,7 @@ Das stabile v0.0.11 — Codename **Rendezvous**, das orbitale Treffen. Dieser Sc
 - **Außerhalb des PATH installierte Agent-CLIs werden auch unter Windows gefunden** — die Fallback-Verzeichnisse von `InstalledBinary` waren Homebrew/usr-local-Pfade und die Ausführbarkeitsprüfung verlangte ein unix-Execute-Bit (unter Windows nie gesetzt), womit der ganze Fallback dort toter Code war; Verzeichnisse und Prüfung sind jetzt plattformspezifisch (`%APPDATA%\npm`, winget Links, scoop shims, cargo).
 - **`panda-input key tab` / `key F5`** — die dokumentierten benannten Tasten wurden kleingeschrieben, bevor die Backend-Tabellen sie case-sensitiv abglichen: Tab und die F-Tasten starben unter macOS als "unknown key" und tippten über den Windows-Zweig literale Buchstaben. Die kanonischen Namen sind jetzt für beide Backends ausgeschrieben.
 - **`panda metrics --runtime` meldet die Daemon-Last unter Windows** — die Zeile war dort nur Liveness (kein `ps`); RSS kommt jetzt aus GetProcessMemoryInfo, CPU/Uptime aus GetProcessTimes, wobei die CPU als verbrauchte Zeit ausgegeben wird ("cpu=4.2s") statt als Momentanprozentsatz, den eine einzelne Stichprobe nicht liefern kann.
+- **Nacktes `panda --help` listet die neuen Task-Verben** — die oberste Usage nannte `task artifact` und `task board` nie (die `task`-Sub-Usage, die Shell-Completion und die READMEs schon), sodass der Artifact-Abruf allein über `--help` nicht auffindbar war.
 
 ## [0.0.11-preview] - 2026-10-14
 

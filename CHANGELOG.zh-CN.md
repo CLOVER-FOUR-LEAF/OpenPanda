@@ -59,6 +59,7 @@ OpenPanda（**Open** **P**ersonal **A**daptive **N**ode-based **D**istributed **
 - **装在 PATH 之外的 agent CLI 在 Windows 上也能被找到** —— `InstalledBinary` 的兜底目录全是 Homebrew/usr-local 这类 unix 路径，且可执行性检查要求 unix 执行位（Windows 上永远不置位），整段兜底在 Windows 上是死代码；目录与检查现已按平台区分（`%APPDATA%\npm`、winget Links、scoop shims、cargo）。
 - **`panda-input key tab` / `key F5`** —— 文档列出的具名按键在进入后端表之前被统一小写，而后端表按大小写精确匹配：Tab 与 F 键在 macOS 上以 "unknown key" 报错，在 Windows 分支则被当作字面字母逐字输入；现在两个后端都补全了规范名。
 - **`panda metrics --runtime` 在 Windows 上报出守护进程负载** —— 此前该行只有存活性（没有 `ps`）；RSS 现取自 GetProcessMemoryInfo，CPU/运行时长取自 GetProcessTimes，CPU 以累计消耗时间呈现（"cpu=4.2s"），而不是单次采样给不出的瞬时百分比。
+- **裸 `panda --help` 补列新任务动词** —— 顶层 usage 从未提到 `task artifact` 与 `task board`（`task` 子帮助、shell 补全与 README 均有），仅看 `--help` 的用户发现不了产物取回入口。
 
 ## [0.0.11-preview] - 2026-10-14
 

@@ -59,6 +59,7 @@ OpenPanda（**Open** **P**ersonal **A**daptive **N**ode-based **D**istributed **
 - **PATH 外にインストールされた agent CLI も Windows で見つかる** —— `InstalledBinary` のフォールバックディレクトリは Homebrew/usr-local といった unix パスばかりで、実行可能性チェックは unix 実行ビット（Windows では決して立たない）を要求していたため、フォールバック全体が Windows では死んだコードでした。ディレクトリとチェックはプラットフォーム別になりました（`%APPDATA%\npm`、winget Links、scoop shims、cargo）。
 - **`panda-input key tab` / `key F5`** —— ドキュメント記載の名前付きキーは、バックエンド表が大文字小文字を区別して照合する前に小文字化されていたため、Tab と F キーは macOS では "unknown key" として失敗し、Windows 分岐ではリテラルの英字が入力されていました。両バックエンドに正規名を明記しました。
 - **`panda metrics --runtime` が Windows でもデーモンの負荷を報告** —— これまでこの行は生存確認のみでした（`ps` がないため）。RSS は GetProcessMemoryInfo、CPU/稼働時間は GetProcessTimes から取得し、CPU は単一サンプルでは出せない瞬間パーセントではなく累積消費時間（"cpu=4.2s"）として表示します。
+- **裸の `panda --help` が新しい task 動詞を掲載** —— 最上位の usage は `task artifact` と `task board` を載せていませんでした（`task` サブ usage、シェル補完、README にはあり）、`--help` だけではアーティファクト取得口に気づけませんでした。
 
 ## [0.0.11-preview] - 2026-10-14
 
