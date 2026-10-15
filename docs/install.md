@@ -1,6 +1,6 @@
 # 安装 OpenPanda
 
-三条路径都能在 macOS / Linux / Windows 上得到**一致的体验**：一个 `panda` 可执行文件 + 智能体适配器（`adapters/*.py`），装在用户目录、免 root。
+三条路径都能在 macOS / Linux / Windows 上得到**一致的体验**：一个 `panda` 可执行文件 + 智能体适配器（`adapters/*.py`）+ 参考执行器驱动（`drivers/panda-*`），装在用户目录、免 root。
 
 | 平台      | 方式                         |
 | ------- | -------------------------- |
@@ -32,6 +32,7 @@ sh scripts/install.sh --no-service             # 不碰开机自启
 ${XDG_DATA_HOME:-~/.local/share}/openpanda/
 ├── bin/panda            # 真实二进制
 ├── adapters/*.py        # 智能体适配器（daemon 委派任务必需）
+├── drivers/panda-*      # 参考执行器驱动（舵机/麦克风/摄像头/串口/截屏/GUI 输入）
 ├── config.example.yaml
 └── capabilities.example-*.yaml
 ```
@@ -121,7 +122,7 @@ panda doctor    # 自检：二进制 / PATH / 配置 / 适配器 / agent 是否�
 panda uninstall             # 扫描 → 列出删除/保留清单 → 输入 confirm 确认 → 自动备份 → 白名单删除
 ```
 
-- **白名单删除**：只删 OpenPanda 自有产物（二进制、PATH 标记块、config.yaml、数据库与运行数据）；`memory/`、`projects/`、`skills/` 等用户资产默认**保留**并在清单中标注。一键脚本/self-update 安装的发行目录（`bin/`、`adapters/`、示例配置）也会一并清扫——Linux 上与存储同根时只动发行文件、保留数据；Homebrew 安装则提示用 `brew uninstall openpanda`，源码 checkout（有 `go.mod`/`.git`）不会被误删。
+- **白名单删除**：只删 OpenPanda 自有产物（二进制、PATH 标记块、config.yaml、数据库与运行数据）；`memory/`、`projects/`、`skills/` 等用户资产默认**保留**并在清单中标注。一键脚本/self-update 安装的发行目录（`bin/`、`adapters/`、`drivers/`、示例配置）也会一并清扫——Linux 上与存储同根时只动发行文件、保留数据；Homebrew 安装则提示用 `brew uninstall openpanda`，源码 checkout（有 `go.mod`/`.git`）不会被误删。
 
 - **自动备份**：删除前把配置与数据打包成 `~/openpanda-backup-<时间戳>.zip`，可回滚（`--no-backup` 跳过）。
 

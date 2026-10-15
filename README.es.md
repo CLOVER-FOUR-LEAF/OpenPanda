@@ -61,6 +61,8 @@ Das una instrucción desde **cualquier** dispositivo. OpenPanda analiza la tarea
 - **Delegación con worktree**: Una tarea de archivos delegada a otro nodo lleva su checkout allí y trae el resultado de vuelta.
 - **Malla multisalto**: Los pines estrictos (`--preferred`, `node:` de etapa) y el plano de datos de contexto/artefactos enrutan a través de varios relevos en una malla parcial: un nodo a dos saltos se direcciona mediante el estado de enlaces difundido, y un ejecutor que no alcanza el origen obtiene su snapshot e insumos por el salto que le entregó la tarea.
 - **Despacho de actuadores**: Las tareas pueden accionar actuadores físicos (servo, micrófono, cámara, notificación, MCU serie) en el nodo que posee el hardware.
+- **Par computer-use**: Un nodo con sesión de escritorio anuncia `hardware:screen_capture` (capturar la pantalla) y `hardware:gui_input` (clic, teclear, tecla, scroll — tier 2 porque un clic no se puede deshacer), así el agente de esa máquina ve y conduce su GUI; los demonios sin cabeza nunca presumen una pantalla que no pueden ver. El contenido de pantalla solo viaja entre nodos de confianza mesh.
+- **Artefactos recuperables**: Lo que una tarea produce (una captura, un informe) se empaqueta y regresa a ti: `panda task artifact <id>` lo lista y extrae, y la consola previsualiza imágenes y texto en línea.
 - **Malla P2P privada**: Comunicación directa por WebSocket autenticado (cifrado AEAD por conexión negociado en el hello firmado) y plano de datos UDP cifrado con atravieso NAT. Tu código y memoria nunca salen de tus dispositivos.
 
 ### 2. 🤖 Orquestación universal de agentes y failover automático
@@ -156,6 +158,7 @@ panda init
 | `panda queue` | Ver tareas pendientes, en ejecución y en revisión |
 | `panda approve <id>` | Aprobar una acción irreversible de nivel 2 |
 | `panda project list` | Gestionar proyectos y contexto del espacio de trabajo |
+| `panda task artifact <id>` | Listar o extraer el artefacto de salida de una tarea (`--list`, `--file <ruta>`, `--out <dir>`) |
 | `panda session` | Listar, bifurcar y reanudar sesiones (`session tree` muestra la familia) |
 | `panda skill` | Explorar, importar e instalar habilidades de flujo de trabajo (Hub, URL o archivo) |
 | `panda auth login` | Iniciar sesión OAuth en una suscripción de modelo (p. ej. `anthropic`) |

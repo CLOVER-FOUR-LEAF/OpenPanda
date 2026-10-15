@@ -61,6 +61,8 @@ Du gibst eine Anweisung von **irgendeinem** Gerät aus. OpenPanda analysiert die
 - **Worktree-reisende Delegation**: Eine an einen anderen Knoten delegierte Datei-Aufgabe trägt ihren Checkout hin und bringt das Ergebnis zurück.
 - **Multi-Hop-Mesh**: Harte Pins (`--preferred`, Stufen-`node:`) und die Kontext-/Artefakt-Datenebene routen über mehrere Relays in einem Teilmesh: Ein Knoten zwei Hops entfernt wird über den gegossipelten Link-State adressiert, und ein Executor ohne Origin-Erreichbarkeit holt Snapshot und Inputs über den Hop, der ihm die Aufgabe übergab.
 - **Aktor-Dispatch**: Aufgaben betätigen physische Aktuatoren (Servo, Mikrofon, Kamera, Benachrichtigung, serieller MCU) auf dem Knoten mit der Hardware.
+- **Computer-use-Paar**: Ein Knoten mit Desktop-Session bewirbt `hardware:screen_capture` (Screenshot des Bildschirms) und `hardware:gui_input` (Klick, Tippen, Taste, Scrollen — Tier 2, weil ein Klick nicht ungeschehen gemacht werden kann), sodass der Agent auf dieser Maschine seine GUI sehen und bedienen kann; headless Daemons behaupten nie einen Bildschirm, den sie nicht sehen können. Bildschirminhalte fließen nur zwischen mesh-vertrauten Knoten.
+- **Abrufbare Artefakte**: Was eine Aufgabe produziert (ein Screenshot, eine Reportdatei) wird gepackt und zurückgeholt: `panda task artifact <id>` listet und entpackt es, die Konsole zeigt Bilder und Text inline.
 - **Privates P2P-Netzwerk**: Direkte Kommunikation über authentifizierte WebSockets (pro Verbindung ausgehandelte AEAD-Verschlüsselung im signierten Hello) und eine verschlüsselte UDP-Datenebene mit NAT-Traversal. Dein Code und Kontext verlassen niemals deine Geräte.
 
 ### 2. 🤖 Universelle Agenten-Orchestrierung & Ausfallsicherung
@@ -156,6 +158,7 @@ panda init
 | `panda queue` | Wartende, laufende und zu genehmigende Aufgaben anzeigen |
 | `panda approve <id>` | Ausstehende irreversible Stufe-2-Aktion freigeben |
 | `panda project list` | Workspace-Projekte und Kontext verwalten |
+| `panda task artifact <id>` | Ausgabe-Artefakt einer Aufgabe auflisten oder entpacken (`--list`, `--file <pfad>`, `--out <verz>`) |
 | `panda session` | Sitzungen auflisten, forken und fortsetzen (`session tree` zeigt die Familie) |
 | `panda skill` | Workflow-Fähigkeiten durchsuchen, importieren und installieren (Hub, URL oder Datei) |
 | `panda auth login` | Modell-Abo per OAuth anmelden (z. B. `anthropic`) |

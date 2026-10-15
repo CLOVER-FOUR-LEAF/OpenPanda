@@ -90,6 +90,15 @@ that peer may carry and admits work it originates under
 and exchange no push-mode delegations. A trust tier is a local, one-sided
 assertion — it narrows your exposure toward a peer but does not change the
 underlying fact that holding the shared secret means membership.
+Screen-capture tasks and their output artifacts carry an even stricter
+default: display content moves over mesh links only
+(`send.guarded.screen` is the explicit same-owner override) — the executor
+stamps `screen_output` at claim time when it resolves a `screen_sensing`
+actuator, the mark rides `task_result` so every delegator hop re-stamps its
+own row, and the artifact-serving side releases such output to mesh peers
+only, participation and signed grants notwithstanding; a trust demotion
+cuts an in-flight transfer immediately rather than waiting out the
+authorization-cache TTL.
 
 ## Integrity verification
 
