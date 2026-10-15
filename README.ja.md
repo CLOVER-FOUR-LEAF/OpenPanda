@@ -38,7 +38,7 @@
                   │   意図解析・最適ルーティング │
                   │   実行監督・セキュリティ制御 │
                   └────────────┬────────────┘
-                               │ 直接 P2P WebSocket (クラウド不要)
+                               │ 直接 P2P リンク (WS + シールド UDP・クラウド不要)
      ┌─────────────────────────┼─────────────────────────┐
      │                         │                         │
 ┌────▼──────────────┐   ┌──────▼────────────┐   ┌────────▼────────────┐
@@ -60,15 +60,18 @@
 - **インテリジェントなタスク配分**: 実測容量にもとづき、重いビルドは強力なサーバーへ、センサー操作はエッジボードへ自動ルーティング。`panda nodes drain` でメンテナンス退避も可能。
 - **ワークツリー同行の委譲**: 他ノードへ委譲したファイルタスクは作業ツリーごと運ばれ、成果が持ち帰られます。
 - **マルチホップメッシュ**: ハードピン留め（`--preferred`、ステージ `node:`）とコンテキスト/成果物データ面は部分メッシュ上で複数リレー経由でルーティング。2 ホップ先のノードは gossip されたリンク状態でアドレス指定され、起点に届かない実行ノードはタスクを渡されたホップ経由でスナップショットと入力を取得します。
-- **アクチュエータディスパッチ**: タスクがハードウェアを持つノード上の物理アクチュエータ（サーボ・マイク・カメラ・通知・シリアル MCU）を駆動。
+- **アクチュエータディスパッチ**: タスクがハードウェアを持つノード上の物理アクチュエータを駆動——`drivers/` には七つの参照ドライバ（サーボ・マイク・カメラ・通知・シリアル MCU・画面キャプチャ・GUI 入力）が同梱され、デスクトップ向け三件には `.ps1` 版もあるため素の Windows ノードに git-bash は不要。
 - **Computer-use ペア**: デスクトップセッションのあるノードは `hardware:screen_capture`（画面キャプチャ）と `hardware:gui_input`（クリック・入力・キー・スクロール——クリックは取り消せないため tier 2）を広告し、そのマシン上のエージェントが GUI を見て操作できます。ヘッドレスなデーモンは見えない画面を申告しません。画面コンテンツは mesh 信頼ティアのノード間でのみ流れます。
 - **取得可能な成果物**: タスクが生み出したもの（スクリーンショット、レポートファイル）はパックされて手元へ戻ります——`panda task artifact <id>` で一覧・展開、コンソールで画像とテキストをインラインプレビュー。
 - **完全ローカル・クラウド中継なし**: 認証済み WebSocket（署名済み hello 内で接続ごとの AEAD 暗号化を交渉）と NAT 越え対応の暗号化 UDP データ面で直接通信。コードやデータが私有デバイスの外へ漏れることはありません。
+- **トラストゾーン**: 各ピアはオペレーター設定の信頼ティア（`panda nodes trust <id> mesh|guarded|open`）を持ち、委譲タスクがそのピアへ公開してよい範囲と、そのピア発の受入タスクの准入を制限します。表示コンテンツはエンドツーエンドで mesh 限定——信頼を降格すると転送中の画面送信も遮断されます。
 
 ### 2. 🤖 あらゆるエージェントの統括 ＆ 自動フォールバック
-- **主要エージェント対応**: Claude Code、OpenAI Codex、Grok Build、DeepSeek Harness、OpenCode、ローカルシェルに対応。
-- **認証救済モデル注入**: Agent の API 残高不足や 401 エラー発生時、設定済みの代替モデルを自動注入してタスクを完遂。
+- **主要エージェント対応**: 十種のアダプターを同梱（Claude Code、OpenAI Codex、OpenCode、Grok Build、DeepSeek Harness、Antigravity、Hermes、Pi、ZCode、OpenClaw）に加え、それ以外を受け止める generic ブリッジとローカルシェルに対応。
+- **マルチモデルレジストリと自動フォールバック**: `panda model add|switch|test` がヘルスブレーカー付きで複数プロバイダーを管理。API 残高不足や 401/403 の資格情報失効時、設定済みの代替モデルを自動注入してタスクを完遂。
+- **マルチハーネス実行**: `panda ask --agents a,b --mode parallel` が一つの指示を plan として複数エージェントに送り、それぞれの結果を回収。
 - **完全透明な実行トレース**: Bash コマンド、ファイル編集、ツール呼び出しをリアルタイムにターミナルやブラウザへ表示。
+- **兄弟タスクのメッセージボード**（実験的）: 同じ plan または親を共有するタスクが、有界スロットのボードで短いメモ（状態一行、発見、生成ファイルへのポインタ）を交換。各エージェントは次のラウンドで仲間の投稿を読み、結果を待ちきる必要がありません。エピソードごとの予算がチャネルの雑談化を防ぎます。
 
 ### 3. 🛡️ 自律安全制御 ＆ 人間による承認ゲート（Human-in-the-Loop）
 - **リスク段階評価**: 安全な可逆操作（コード読み込み、ローカルビルド、テスト実行）は全自動で完結。
@@ -82,11 +85,14 @@
 - **文脈付きタスク移送**: マシン間でタスクを委譲する際、プロジェクト記憶と作業ツリーの要約が自動で同伴します。
 
 ### 5. 🖥️ 統一インターフェースと埋め込み
-- **対話型ターミナル TUI**: Bubble Tea 製。フルスクリーンのオルタネートスクリーンとキーボードナビゲーション、初回起動ウィザード、リアルタイム進捗、実行中の方向転換（Mid-turn Steering）に対応。
-- **ゼロ構成の Web コンソール**: タスクカンバン、リアルタイム SSE、スキル管理、セッションキャンセル、自動ログイン。
+- **対話型ターミナル TUI**: Bubble Tea 製。フルスクリーンのオルタネートスクリーンとキーボードナビゲーション、初回起動ウィザード、リアルタイム進捗、実行中の方向転換（Mid-turn Steering）に対応。`PANDA_CLASSIC_REPL=1` で従来の行式 REPL に戻せます。
+- **ゼロ構成の Web コンソール**: タスクカンバン、リアルタイム SSE、スキル管理、セッションキャンセル、自動ログイン。`panda web --lan` は一時トークン付きで LAN へ公開し、Web Push 通知にも対応。
+- **音声入力**（実験的）: `panda voice` が同梱の `extensions/voice` サイドカースクリプトで「ウェイク → 転写 → タスク派遣 → 読み上げ」のループを回します（別途 Python 依存が必要）。
 - **スクリプト可能な CLI**: `panda ask "..."` など、シェルスクリプトや CI から直接呼び出し可能。
+- **自己更新**: `panda update check|apply`（または `panda upgrade`）がステージング済みの新バイナリを検査してからその場で差し替えます。
 - **セッションツリーと分岐**: `panda session fork <id> --at N` で任意ターンから会話を分岐。リポジトリ内では子のワークツリーが親ブランチから切られ、親が作ったコード状態を引き継ぎます。`panda session tree` で系譜を表示、REPL/TUI 内の `/fork` も同様。
 - **自動コンパクション**: 溢れた履歴は破棄せず、モデル生成のローリング要約に畳み込み。保存されたスレッドは完全なまま残ります。
+- **`panda mcp`**: ノード自身のツール群（タスク・メモリ・スキル…）を MCP stdio サーバーとして公開し、MCP を話すあらゆるエージェントが標準プロトコルでこのノードを駆動できます。
 - **`panda rpc`**（実験的）: `status`・ストリーミング `ask`・`session.*` を提供する NDJSON-over-stdio 埋め込み面。`scripts/panda_rpc.py` が最小の参照クライアント。
 - **サブスクリプション OAuth**（実験的）: `panda auth login anthropic` が PKCE で Claude Pro/Max をサインインし、トークンを透過リフレッシュ。
 
@@ -107,14 +113,21 @@ curl -fsSL https://raw.githubusercontent.com/Xustalis/OpenPanda/main/scripts/ins
 
 **macOS (Homebrew):**
 ```bash
-brew tap Xustalis/openpanda
-brew install openpanda
+brew install Xustalis/openpanda/openpanda
 ```
 
 **Windows (PowerShell):**
 ```powershell
 irm https://raw.githubusercontent.com/Xustalis/OpenPanda/main/scripts/install.ps1 | iex
 ```
+
+**ソースからビルド**（Go ≥ 1.26、CGO なしでクリーンにクロスコンパイル）:
+```bash
+git clone https://github.com/Xustalis/OpenPanda.git && cd OpenPanda
+make build && ./bin/panda init
+```
+
+すでにインストール済みなら、`panda update` でユーザーデータを保持したままその場でアップグレードできます。
 
 ### ステップ 2: ノードの初期化
 
@@ -152,18 +165,24 @@ MacBook と Linux ワークステーションを連携させる場合：
 | コマンド | 説明 |
 |---|---|
 | `panda` | フル機能の対話型 Bubble Tea TUI を起動 |
-| `panda ask "<query>"` | 即時実行（直接回答・ツール呼び出し・タスク委譲） |
-| `panda web` | 組み込み Web コンソールを起動して自動ログイン |
-| `panda nodes` | ネットワーク内のオンラインデバイスと能力一覧を表示 |
+| `panda ask "<query>"` | 即時実行（直接回答・ツール呼び出し・タスク委譲。`--agents a,b --mode parallel` でマルチエージェント実行） |
+| `panda web` | 組み込み Web コンソールを起動して自動ログイン（`--lan` で LAN 共有） |
+| `panda voice` | タイプの代わりに話しかける（実験的） |
+| `panda model` | マルチモデルレジストリ：`status`、`add`、`switch`、`test` |
+| `panda nodes` | オンラインデバイスと能力一覧。`nodes trust <id> mesh\|guarded\|open` でピアの信頼ティアを固定 |
 | `panda pair` | 新しいデバイスを LAN 経由でペアリング（両端で同じコードを確認） |
-| `panda queue` | 待機中・実行中・承認待ちのタスクを表示 |
+| `panda queue` | 待機中・実行中・承認待ちのタスクを表示（`--watch` でライブ更新） |
 | `panda approve <id>` | 保留中の第 2 層高リスク操作を承認 |
-| `panda project list` | ワークスペースプロジェクトと記憶の管理 |
+| `panda plan run <file.yaml>` | 多段階・マルチデバイスのパイプライン（`plan example` で雛形を生成） |
+| `panda task board <id>` | タスクが読む兄弟メッセージボードを表示（plan/親スコープとその子） |
 | `panda task artifact <id>` | タスクの出力成果物を一覧・展開（`--list`、`--file <パス>`、`--out <dir>`） |
 | `panda session` | セッションの一覧・分岐・再開（`session tree` で系譜表示） |
+| `panda project list` | ワークスペースプロジェクトと記憶の管理 |
+| `panda card` | このノードの能力カードを表示・再スキャン・編集 |
 | `panda skill` | ワークフロースキルの閲覧・インポート・インストール（Hub / URL / ファイル） |
 | `panda auth login` | モデルサブスクリプション（例：`anthropic`）を OAuth サインイン |
-| `panda rpc` | OpenPanda を埋め込む NDJSON-over-stdio API |
+| `panda mcp` · `panda rpc` | ノードの自前ツールを MCP stdio で公開 · NDJSON 埋め込み面 |
+| `panda update` | 更新の確認または自己更新（`upgrade` で直接適用） |
 | `panda doctor` | PATH、設定、アダプター、データベースのヘルスチェック |
 | `panda version` | 現在のバイナリバージョンを表示 |
 
@@ -190,14 +209,21 @@ OpenPanda のアーキテクチャは、大規模な異種クラスタのため�
 
 ---
 
+## 📚 ドキュメント
+
+ドキュメント一式は [`docs/`](docs/README.md) にあります：[プロジェクト現状](docs/status.md)（検証済み vs ビルド済みのみ）、[インストールガイド](docs/install.md)、[FAQ](docs/faq.md)、[バスプロトコル](docs/protocol.md) リファレンス、設計ドラフトと過去レポート。内部ドキュメントの多くは中国語で書かれています。
+
+---
+
 ## 🤝 コミュニティと貢献
 
 コミュニティからの貢献を歓迎します！新しい AI CLI アダプターの追加、スケジューラーの改善、TUI コンポーネントの機能向上など：
 
 1. [CONTRIBUTING.ja.md](CONTRIBUTING.ja.md) で開発規約をご確認ください。
-2. [SECURITY.md](SECURITY.md) でセキュリティ基準をご確認ください。
+2. [SECURITY.en.md](SECURITY.en.md) でセキュリティ基準をご確認ください（正本は中国語の [SECURITY.md](SECURITY.md)）。
 3. [CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md) 行動規範を遵守してください。
 4. PR 提出前に `make gate` を実行してください。
+5. 些細でない貢献には CLA への同意が必要です——[CLA.md](CLA.md) を参照。タイポやドキュメントの修正、`adapters/` 配下の変更は対象外です。
 
 ---
 

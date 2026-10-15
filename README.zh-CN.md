@@ -16,7 +16,7 @@
 
 ## 简介
 
-OpenPanda 将终端 AI 编程助手（Claude Code、OpenAI Codex、Grok Build、DeepSeek Harness、OpenCode 等）与你的设备组织为一支统一的执行队伍。你发出一条指令，它负责意图理解、任务拆解、调度派发、执行监督与结果校验——全程本地运行，不依赖任何云端服务。
+OpenPanda 将你机器上已有的终端 AI 编程助手——内置十个适配器（Claude Code、OpenAI Codex、OpenCode、Grok Build、DeepSeek Harness、Antigravity、Hermes、Pi、ZCode、OpenClaw），外加一个兜底其余一切的 generic 桥——与你的设备组织为一支统一的执行队伍。它本身不是 Agent：你发出一条指令，它负责意图理解、任务拆解、调度派发、执行监督与结果校验——全程本地运行，不依赖任何云端服务。
 
 ```
 ┌─────────────────────────────────────────────────────────────┐
@@ -29,7 +29,7 @@ OpenPanda 将终端 AI 编程助手（Claude Code、OpenAI Codex、Grok Build、
                   │   意图解析 · 智能路由   │
                   │   双向监督 · 安全风控   │
                   └────────────┬────────────┘
-                               │ 点对点直连 WebSocket（无云端中转）
+                               │ 点对点直连（WS + 密封 UDP，无云端中转）
      ┌─────────────────────────┼─────────────────────────┐
      │                         │                         │
 ┌────▼──────────────┐   ┌──────▼────────────┐   ┌────────▼────────────┐
@@ -55,13 +55,17 @@ OpenPanda 将终端 AI 编程助手（Claude Code、OpenAI Codex、Grok Build、
 
 - **监督循环（Supervision Loop）** —— 入口模型持续判定任务完成度，不合格则携带失败原因重新派发，直到完成或超出轮次预算（默认 5 轮）。
 
-- **无感故障转移** —— Agent 遇到配额耗尽或凭据失效（401/403）时，自动注入配置的备用模型接力执行，任务不中断。
+- **多模型注册中心与无感故障转移** —— `panda model add|switch|test` 为每个节点管理多个模型供应商并带健康熔断；配额耗尽或凭据失效（401/403）时自动注入备用模型接力执行，任务不中断。
+
+- **多 Harness 并行** —— `panda ask --agents a,b --mode parallel` 把一条指令作为 plan 同时派给多个 Agent 并回收各自结论。
 
 - **透明执行** —— 每条 Bash 命令、每次文件修改、每次工具调用及其背后的 Agent 与模型，实时流式回传终端与控制台。
 
 - **分级审批** —— 可逆操作全自动执行；`git push`、修改生产数据库等不可逆操作挂起等待人工确认。
 
 - **熔断保护** —— 死循环侦测与重试熔断器，防止 Agent 失控消耗 Token。
+
+- **任务间消息板**（实验性）—— 同属一个 plan 或同一父任务的兄弟任务通过有界槽位板交换短消息（一行状态、一条发现、一个产出文件指针）；每个 Agent 在自己的下一轮读到同伴的留言，而不是阻塞等待对方的结果，按周期计的预算避免信道沦为闲聊。
 
 ### 记忆与技能
 
@@ -81,13 +85,15 @@ OpenPanda 将终端 AI 编程助手（Claude Code、OpenAI Codex、Grok Build、
 
 - **P2P 直连** —— 节点间通过认证 WebSocket 通信（握手内协商逐连接 AEAD 加密）加加密 UDP 数据面（支持 NAT 穿透），数据不离开私有网络。
 
+- **信任分区** —— 每个对端带一个运营者设定的信任档（`panda nodes trust <id> mesh|guarded|open`），钳制委派出站可暴露给它的内容以及来自它的入站任务如何准入；显示内容端到端仅限 mesh 档——信任降级会中途掐断截屏传输。
+
 - **按需路由** —— 调度器按实测容量评分将任务派往最匹配的节点；`panda nodes drain` 可将节点下线维护。
 
 - **工作树随委派同行** —— 委派到其他节点的文件任务会携带工作目录过去并把结果带回。
 
 - **多跳 mesh** —— 硬钉选（`--preferred`、阶段 `node:`）与 context/artifact 数据面在部分网状拓扑上跨中继路由：两跳外的节点沿 gossip 链路状态寻址，够不到源节点的执行者经交付它的那一跳逐段上溯拉取快照与输入。
 
-- **Actuator 派发** —— 任务可驱动持有硬件的节点上的物理执行器（舵机、麦克风、摄像头、通知、串口 MCU）。
+- **Actuator 派发** —— 任务可驱动持有硬件的节点上的物理执行器；`drivers/` 随发行包附带七个参考实现（舵机、麦克风、摄像头、通知、串口 MCU、截屏、GUI 输入），桌面三件套另有 `.ps1` 变体，原生 Windows 节点无需 git-bash。
 - **Computer-use 组合** —— 有桌面会话的节点会广告 `hardware:screen_capture`（截屏）与 `hardware:gui_input`（点击、输入、按键、滚动——点击不可撤销故为 tier 2），该机器上的 agent 由此看见并操作自己的 GUI；无头守护进程不虚报看不见的屏幕。屏幕内容只在 mesh 信任档节点之间流动。
 - **产物可取回** —— 任务产出的东西（截图、报告文件）会被打包拉回：`panda task artifact <id>` 列清单并解出，控制台可内联预览图片与文本。
 
@@ -97,17 +103,23 @@ OpenPanda 将终端 AI 编程助手（Claude Code、OpenAI Codex、Grok Build、
 
 - **自动压缩** —— 溢出的历史折叠为模型撰写的滚动摘要而非丢弃，存储的线程保持完整。
 
+- **`panda mcp`** —— 把节点自己的工具（任务、记忆、技能……）暴露为 MCP stdio 服务，任何讲 MCP 协议的 Agent 都能经标准协议驱动这个节点。
+
 - **`panda rpc`**（实验性）—— NDJSON-over-stdio 嵌入面（`status`、流式 `ask`、`session.*`），其他工具可驱动 OpenPanda；`scripts/panda_rpc.py` 为纯 stdlib 参考客户端。
 
 - **订阅 OAuth**（实验性）—— `panda auth login anthropic` 通过 PKCE 登录 Claude Pro/Max 订阅，token 自动刷新。
 
 ### 接口与运行时
 
-- **终端 TUI**（Bubble Tea）：全屏 alternate-screen 模式与键盘导航、首次运行引导向导、实时进度、中途打断与转向。
+- **终端 TUI**（Bubble Tea）：全屏 alternate-screen 模式与键盘导航、首次运行引导向导、实时进度、中途打断与转向；`PANDA_CLASSIC_REPL=1` 可回到经典行式 REPL。
 
-- **Web 控制台**：零配置、任务看板、实时 SSE 消息流、技能管理、会话取消、浏览器自动登录。
+- **Web 控制台**：零配置、任务看板、实时 SSE 消息流、技能管理、会话取消、浏览器自动登录；`panda web --lan` 以临时令牌把控制台分享到局域网，并支持 Web Push 通知。
+
+- **语音入口**（实验性）：`panda voice` 通过随附的 `extensions/voice` sidecar 脚本跑通「唤醒 → 转写 → 派任务 → 朗读」回路（需自备 Python 依赖）。
 
 - **脚本化 CLI**：`panda ask` 单行命令嵌入自动化脚本。
+
+- **自更新**：`panda update check|apply`（或 `panda upgrade`）先探测暂存的新二进制再原地替换。
 
 - **极致轻量**：纯 Go 单静态二进制，常驻内存约 20MB，无外部运行时依赖。
 
@@ -124,8 +136,7 @@ curl -fsSL https://raw.githubusercontent.com/Xustalis/OpenPanda/main/scripts/ins
 **macOS (Homebrew)：**
 
 ```bash
-brew tap Xustalis/openpanda
-brew install openpanda
+brew install Xustalis/openpanda/openpanda
 ```
 
 **Windows (PowerShell)：**
@@ -133,6 +144,15 @@ brew install openpanda
 ```powershell
 irm https://raw.githubusercontent.com/Xustalis/OpenPanda/main/scripts/install.ps1 | iex
 ```
+
+**从源码构建**（Go ≥ 1.26，无 CGO，交叉编译干净）：
+
+```bash
+git clone https://github.com/Xustalis/OpenPanda.git && cd OpenPanda
+make build && ./bin/panda init
+```
+
+已安装？`panda update` 原地升级，用户数据保留。
 
 ***
 
@@ -160,20 +180,25 @@ panda ask "查看系统状态并总结待办任务"  # 直接发一条指令
 
 | 命令                   | 用途                               |
 | -------------------- | -------------------------------- |
-| `panda`              | 启动交互式终端控制台                       |
-| `panda ask "<指令>"`   | 单次执行：直接回答、调用工具或委派任务              |
-| `panda web`          | 启动网页控制台并自动打开浏览器                  |
-| `panda nodes`        | 查看 P2P 网络中的在线设备及其能力              |
+| `panda`              | 启动交互式终端 TUI                       |
+| `panda ask "<指令>"`   | 单次执行：直接回答、调用工具或委派任务（`--agents a,b --mode parallel` 多 Agent 并行） |
+| `panda web`          | 启动网页控制台并自动打开浏览器（`--lan` 分享到局域网） |
+| `panda voice`        | 用说话代替打字（实验性）                  |
+| `panda model`        | 多模型注册中心：`status`、`add`、`switch`、`test` |
+| `panda nodes`        | 查看在线设备及能力；`nodes trust <id> mesh\|guarded\|open` 钉住对端信任档 |
 | `panda pair`         | LAN 配对一台新设备（两端核对同一短码）              |
 | `panda queue`        | 查看排队中、执行中或待审批的任务（`--watch` 实时刷新） |
 | `panda approve <id>` | 审批放行二级高危操作                       |
-| `panda project list` | 管理工作空间项目与工程记忆                    |
+| `panda plan run <文件.yaml>` | 多阶段、多设备流水线（`plan example` 生成起步样例） |
 | `panda task board <id>` | 查看任务可读的兄弟消息板（plan/父作用域及其子任务）  |
 | `panda task artifact <id>` | 列出或解出任务的输出工件（`--list`、`--file <路径>`、`--out <目录>`） |
 | `panda session`      | 列出、分叉并恢复会话（`session tree` 查看家族树）       |
+| `panda project list` | 管理工作空间项目与工程记忆                    |
+| `panda card`         | 查看、重扫并编辑本机能力卡                   |
 | `panda skill`        | 浏览、导入并安装工作流技能（技能中心/URL/文件）        |
 | `panda auth login`   | 通过 OAuth 登录模型订阅（如 `anthropic`）       |
-| `panda rpc`          | NDJSON-over-stdio API，供其他工具嵌入 OpenPanda |
+| `panda mcp` · `panda rpc` | 把节点自工具暴露为 MCP stdio 服务 · NDJSON 嵌入面 |
+| `panda update`       | 检查更新或原地自更新（`upgrade` 直接应用）     |
 | `panda doctor`       | 体检 PATH、配置、适配器与数据库               |
 | `panda version`      | 输出版本号                            |
 
@@ -183,18 +208,22 @@ panda ask "查看系统状态并总结待办任务"  # 直接发一条指令
 
 ```
 ┌─────────────────────────────────────────────────────────────┐
-│ cmd/panda      终端交互 TUI · 网页看板 · CLI 快速入口       │
+│ cmd/panda      终端 TUI · 网页控制台 · CLI · 语音           │
 ├─────────────────────────────────────────────────────────────┤
-│ askengine      意图分类引擎 · 管理工具族 · 智能降级         │
-│ plan           多阶段任务拆解与阶段间产物接线               │
+│ askengine      意图分类引擎 · 管理工具族                    │
+│ entry/plan     提示词构建 · 多阶段拆解与产物接线            │
 │ commander      三层执行架构：原生 Shell · Agent 适配 · 人工 │
 │ defense        分级权限门控 · 熔断器 · 防漂移与防死循环     │
-│ memory         双层隔离记忆（用户/项目） · 自学习 Skills    │
+│ memory/skills  双层隔离记忆（用户/项目） · 自学习 SKILL.md  │
 ├─────────────────────────────────────────────────────────────┤
 │ sessions       会话树 · 分叉 · 自动压缩                     │
-│ auth           订阅 OAuth（PKCE）· token 存储              │
-│ scheduler      多设备能力评分与任务路由                     │
-│ bus / ledger   P2P WebSocket + UDP 传输 · HMAC 认证         │
+│ auth/updater   订阅 OAuth（PKCE）· 自更新                  │
+│ scheduler      能力评分路由 · 延迟加权最短路                │
+│ trust          按对端信任分区（mesh/guarded/open）          │
+│ bus/ledger     WS + 密封 UDP 传输 · 会话 AEAD ·            │
+│                Ed25519 节点身份 · 能力卡                    │
+│ artifact       分块可续传的产出打包                         │
+│ security       沙箱 · 网络白名单 · 凭据脱敏                 │
 │ storage        纯 Go 嵌入式 SQLite（WAL 模式）             │
 └─────────────────────────────────────────────────────────────┘
 ```
@@ -222,12 +251,19 @@ OpenPanda 的架构为大规模异构集群而设计：无人机集群控制、�
 
 ***
 
+## 📚 文档
+
+完整文档集在 [`docs/`](docs/README.md) 下：[项目现状](docs/status.md)（哪些已验证、哪些仅构建通过）、[安装指南](docs/install.md)、[FAQ](docs/faq.md)、[总线协议](docs/protocol.md) 参考，以及设计稿与历史报告。内部文档大多为中文。
+
+***
+
 ## 🤝 参与贡献
 
 1. 查阅 [CONTRIBUTING.zh-CN.md](CONTRIBUTING.zh-CN.md) 了解代码规范与开发流。
 2. 查阅 [SECURITY.md](SECURITY.md) 了解安全边界。
 3. 遵循 [CODE\_OF\_CONDUCT.md](CODE_OF_CONDUCT.md) 社区行为守则。
 4. 提交 PR 前在本地运行 `make gate` 确保全部校验通过。
+5. 非琐碎贡献需签署 CLA——见 [CLA.zh-CN.md](CLA.zh-CN.md)；typo/文档类修改与 `adapters/` 下的改动豁免。
 
 ***
 

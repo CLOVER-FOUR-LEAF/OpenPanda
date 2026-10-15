@@ -38,7 +38,7 @@ In der Praxis besteht dein täglicher Arbeitsablauf jedoch aus heterogenen Gerä
                   │   Routen, Orchestrieren,│
                   │    Prüfen & Absichern   │
                   └────────────┬────────────┘
-                               │ Direktes P2P-WebSocket (Keine Cloud)
+                               │ Direkte P2P-Links (WS + versiegeltes UDP, keine Cloud)
      ┌─────────────────────────┼─────────────────────────┐
      │                         │                         │
 ┌────▼──────────────┐   ┌──────▼────────────┐   ┌────────▼────────────┐
@@ -60,15 +60,18 @@ Du gibst eine Anweisung von **irgendeinem** Gerät aus. OpenPanda analysiert die
 - **Intelligente Aufgabenverteilung**: Routet nach gemessener Kapazität — schwere Kompiliervorgänge an leistungsstarke Server, Sensoraufgaben an Edge-Knoten; `panda nodes drain` entfernt einen Knoten für Wartung.
 - **Worktree-reisende Delegation**: Eine an einen anderen Knoten delegierte Datei-Aufgabe trägt ihren Checkout hin und bringt das Ergebnis zurück.
 - **Multi-Hop-Mesh**: Harte Pins (`--preferred`, Stufen-`node:`) und die Kontext-/Artefakt-Datenebene routen über mehrere Relays in einem Teilmesh: Ein Knoten zwei Hops entfernt wird über den gegossipelten Link-State adressiert, und ein Executor ohne Origin-Erreichbarkeit holt Snapshot und Inputs über den Hop, der ihm die Aufgabe übergab.
-- **Aktor-Dispatch**: Aufgaben betätigen physische Aktuatoren (Servo, Mikrofon, Kamera, Benachrichtigung, serieller MCU) auf dem Knoten mit der Hardware.
+- **Aktor-Dispatch**: Aufgaben betätigen physische Aktuatoren auf dem Knoten mit der Hardware — `drivers/` liefert sieben Referenztreiber mit (Servo, Mikrofon, Kamera, Benachrichtigung, serieller MCU, Screen-Capture, GUI-Eingabe), mit `.ps1`-Varianten für das Desktop-Trio, sodass Standard-Windows-Knoten kein git-bash brauchen.
 - **Computer-use-Paar**: Ein Knoten mit Desktop-Session bewirbt `hardware:screen_capture` (Screenshot des Bildschirms) und `hardware:gui_input` (Klick, Tippen, Taste, Scrollen — Tier 2, weil ein Klick nicht ungeschehen gemacht werden kann), sodass der Agent auf dieser Maschine seine GUI sehen und bedienen kann; headless Daemons behaupten nie einen Bildschirm, den sie nicht sehen können. Bildschirminhalte fließen nur zwischen mesh-vertrauten Knoten.
 - **Abrufbare Artefakte**: Was eine Aufgabe produziert (ein Screenshot, eine Reportdatei) wird gepackt und zurückgeholt: `panda task artifact <id>` listet und entpackt es, die Konsole zeigt Bilder und Text inline.
 - **Privates P2P-Netzwerk**: Direkte Kommunikation über authentifizierte WebSockets (pro Verbindung ausgehandelte AEAD-Verschlüsselung im signierten Hello) und eine verschlüsselte UDP-Datenebene mit NAT-Traversal. Dein Code und Kontext verlassen niemals deine Geräte.
+- **Trust-Zonen**: Jeder Peer trägt eine vom Betreiber gesetzte Stufe (`panda nodes trust <id> mesh|guarded|open`), die begrenzt, was eine delegierte Aufgabe ihm offenlegen darf und wie eingehende Arbeit von ihm zugelassen wird; Bildschirminhalte sind durchgehend mesh-exklusiv — eine Abstufung des Vertrauens kappt eine laufende Screen-Übertragung mitten im Flug.
 
 ### 2. 🤖 Universelle Agenten-Orchestrierung & Ausfallsicherung
-- **Vorkonfigurierte Adapter**: Funktioniert direkt mit Claude Code, OpenAI Codex, Grok Build, DeepSeek Harness, OpenCode und Shell-Befehlen.
-- **Automatische Modellinjektion**: Bei aufgebrauchten API-Kontingenten oder ungültigen Schlüsseln (401/403) injiziert OpenPanda automatisch konfigurierte Ausweichmodelle.
+- **Vorkonfigurierte Adapter**: Zehn mitgelieferte Adapter (Claude Code, OpenAI Codex, OpenCode, Grok Build, DeepSeek Harness, Antigravity, Hermes, Pi, ZCode, OpenClaw), eine generic-Brücke für alles Übrige und Shell-Befehle.
+- **Multi-Modell-Registry & transparentes Failover**: `panda model add|switch|test` verwaltet mehrere Provider pro Knoten hinter einem Health-Breaker; bei aufgebrauchten Kontingenten oder ungültigen Schlüsseln (401/403) wird automatisch ein Ausweichmodell injiziert und die Aufgabe läuft weiter.
+- **Multi-Harness-Läufe**: `panda ask --agents a,b --mode parallel` verteilt eine Anweisung als Plan an mehrere Agenten und sammelt die Urteile ein.
 - **Vollständige Transparenz**: Verfolge Bash-Befehle, Dateiänderungen und Werkzeugaufrufe live im Terminal oder Browser.
+- **Geschwister-Nachrichtenbrett** (experimentell): Aufgaben unter demselben Plan oder Elternteil tauschen kurze Notizen (eine Statuszeile, ein Befund, ein Verweis auf erzeugte Dateien) über ein begrenztes Slot-Board aus; jeder Agent liest beim nächsten Durchlauf, was seine Peers posteten, statt auf deren Ergebnisse zu blockieren — ein Budget pro Episode verhindert, dass der Kanal zum Geplauder wird.
 
 ### 3. 🛡️ Autonome Sicherheit & menschliche Freigabe (Human-in-the-Loop)
 - **Gestufte Risikobewertung**: Sichere, umkehrbare Aktionen (Code lesen, kompilieren, Tests ausführen) laufen autonom durch.
@@ -82,11 +85,14 @@ Du gibst eine Anweisung von **irgendeinem** Gerät aus. OpenPanda analysiert die
 - **Projektkontext-Roaming**: Bei der Aufgabenübergabe reisen Projektspeicher und Arbeitsbaum-Zusammenfassungen automatisch mit.
 
 ### 5. 🖥️ Einheitliche Schnittstellen & Einbettung
-- **Interaktive Terminal-TUI**: Bubble Tea mit Vollbild-Alternate-Screen-Modus, Tastaturnavigation, Erststarts-Assistent, Live-Fortschritt und Richtungswechsel während der Ausführung.
-- **Integrierte Web-Konsole**: Kanban-Board, Echtzeit-SSE-Streaming, Skills-Verwaltung, Sitzungsabbruch und automatische Anmeldung.
+- **Interaktive Terminal-TUI**: Bubble Tea mit Vollbild-Alternate-Screen-Modus, Tastaturnavigation, Erststarts-Assistent, Live-Fortschritt und Richtungswechsel während der Ausführung; `PANDA_CLASSIC_REPL=1` hält die klassische Zeilen-REPL bereit.
+- **Integrierte Web-Konsole**: Kanban-Board, Echtzeit-SSE-Streaming, Skills-Verwaltung, Sitzungsabbruch und automatische Anmeldung; `panda web --lan` teilt sie im LAN hinter einem temporären Token, inklusive Web-Push-Benachrichtigungen.
+- **Spracheingabe** (experimentell): `panda voice` führt die Schleife Wake → Transkribieren → Dispatchen → Vorlesen über die mitgelieferten `extensions/voice`-Sidecar-Skripte aus (braucht eigene Python-Abhängigkeiten).
 - **Skriptfähige CLI**: Schnelle Befehle wie `panda ask` zur nahtlosen Einbindung in eigene Skripte.
+- **Selbstaktualisierung**: `panda update check|apply` (oder `panda upgrade`) prüft ein bereitgestelltes Binary und tauscht es vor Ort aus.
 - **Sitzungsbäume & Forking**: `panda session fork <id> --at N` gabelt die Konversation an beliebigem Turn; in einem Repo wird der Kind-Worktree vom Eltern-Branch abgezweigt und erbt erzeugten Code. `panda session tree` zeigt die Familie, `/fork` tut dasselbe in REPL/TUI.
 - **Auto-Kompaktierung**: Überlaufende Historie wird zu einem modellgeschriebenen Rollsummary gefaltet statt verworfen — der gespeicherte Verlauf bleibt vollständig.
+- **`panda mcp`**: Stellt die eigenen Werkzeuge des Knotens (Aufgaben, Speicher, Skills …) als MCP-stdio-Server bereit, sodass jeder MCP-fähige Agent den Knoten über das Standardprotokoll steuern kann.
 - **`panda rpc`** (experimentell): NDJSON-over-stdio-Einbettungsoberfläche (`status`, Streaming-`ask`, `session.*`); `scripts/panda_rpc.py` ist ein stdlib-Referenzclient.
 - **Abo-OAuth** (experimentell): `panda auth login anthropic` meldet Claude Pro/Max per PKCE an und erneuert Token transparent.
 
@@ -107,14 +113,21 @@ curl -fsSL https://raw.githubusercontent.com/Xustalis/OpenPanda/main/scripts/ins
 
 **macOS (Homebrew):**
 ```bash
-brew tap Xustalis/openpanda
-brew install openpanda
+brew install Xustalis/openpanda/openpanda
 ```
 
 **Windows (PowerShell):**
 ```powershell
 irm https://raw.githubusercontent.com/Xustalis/OpenPanda/main/scripts/install.ps1 | iex
 ```
+
+**Aus dem Quellcode** (Go ≥ 1.26, ohne CGO — sauberes Cross-Compiling):
+```bash
+git clone https://github.com/Xustalis/OpenPanda.git && cd OpenPanda
+make build && ./bin/panda init
+```
+
+Bereits installiert? `panda update` aktualisiert vor Ort; deine Daten bleiben erhalten.
 
 ### Schritt 2: Knoten initialisieren
 
@@ -151,18 +164,24 @@ panda init
 | Befehl | Beschreibung |
 |---|---|
 | `panda` | Vollständige interaktive Bubble Tea TUI starten |
-| `panda ask "<anfrage>"` | Direkt ausführen: antworten, Werkzeug nutzen oder delegieren |
-| `panda web` | Eingebettete Web-Konsole starten und Browser öffnen |
-| `panda nodes` | Verbundene Geräte im P2P-Netzwerk anzeigen |
+| `panda ask "<anfrage>"` | Direkt ausführen: antworten, Werkzeug nutzen oder delegieren (`--agents a,b --mode parallel` für einen Multi-Agenten-Lauf) |
+| `panda web` | Eingebettete Web-Konsole starten und Browser öffnen (`--lan` zum Teilen) |
+| `panda voice` | Dem Knoten etwas sagen statt tippen (experimentell) |
+| `panda model` | Multi-Modell-Registry: `status`, `add`, `switch`, `test` |
+| `panda nodes` | Verbundene Geräte und Fähigkeiten anzeigen; `nodes trust <id> mesh\|guarded\|open` pinnt die Peer-Stufe |
 | `panda pair` | Neues Gerät per LAN koppeln (Kurzcode auf beiden Seiten bestätigt) |
-| `panda queue` | Wartende, laufende und zu genehmigende Aufgaben anzeigen |
+| `panda queue` | Wartende, laufende und zu genehmigende Aufgaben anzeigen (`--watch` für Live-Updates) |
 | `panda approve <id>` | Ausstehende irreversible Stufe-2-Aktion freigeben |
-| `panda project list` | Workspace-Projekte und Kontext verwalten |
+| `panda plan run <datei.yaml>` | Mehrstufige, geräteübergreifende Pipelines (`plan example` erzeugt eine Vorlage) |
+| `panda task board <id>` | Geschwister-Nachrichtenboards einer Aufgabe anzeigen (Plan-/Eltern-Scope plus Kinder) |
 | `panda task artifact <id>` | Ausgabe-Artefakt einer Aufgabe auflisten oder entpacken (`--list`, `--file <pfad>`, `--out <verz>`) |
 | `panda session` | Sitzungen auflisten, forken und fortsetzen (`session tree` zeigt die Familie) |
+| `panda project list` | Workspace-Projekte und Kontext verwalten |
+| `panda card` | Fähigkeitskarte dieses Knotens anzeigen, neu scannen und bearbeiten |
 | `panda skill` | Workflow-Fähigkeiten durchsuchen, importieren und installieren (Hub, URL oder Datei) |
 | `panda auth login` | Modell-Abo per OAuth anmelden (z. B. `anthropic`) |
-| `panda rpc` | NDJSON-over-stdio-API zum Einbetten von OpenPanda |
+| `panda mcp` · `panda rpc` | Eigene Werkzeuge des Knotens per MCP stdio bereitstellen · NDJSON-Einbettung |
+| `panda update` | Nach Updates suchen oder vor Ort selbst aktualisieren (`upgrade` wendet direkt an) |
 | `panda doctor` | PATH, Konfiguration, Adapter und Datenbank prüfen |
 | `panda version` | Aktuelle Binärversion ausgeben |
 
@@ -189,9 +208,15 @@ Heute dient OpenPanda den Geräten und Agenten eines Entwicklers. Das langfristi
 
 ---
 
+## 📚 Dokumentation
+
+Die Dokumentation liegt unter [`docs/`](docs/README.md): [Projektstatus](docs/status.md) (was verifiziert vs. nur gebaut ist), die [Installationsanleitung](docs/install.md), das [FAQ](docs/faq.md), die [Bus-Protokoll](docs/protocol.md)-Referenz sowie Design-Entwürfe und historische Berichte. Die meisten internen Dokumente sind auf Chinesisch verfasst.
+
+---
+
 ## 🤝 Mitwirken
 
-Wir freuen uns über Beiträge aus der Community! Bitte beachte [CONTRIBUTING.de.md](CONTRIBUTING.de.md), [SECURITY.md](SECURITY.md) und [CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md).
+Wir freuen uns über Beiträge aus der Community! Bitte beachte [CONTRIBUTING.de.md](CONTRIBUTING.de.md), [SECURITY.en.md](SECURITY.en.md) (maßgeblich ist die chinesische [SECURITY.md](SECURITY.md)) und [CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md), und führe `make gate` lokal aus. Nichttriviale Beiträge setzen die Zustimmung zum [CLA](CLA.md) voraus; Tippfehler-/Doku-Fixes und Änderungen unter `adapters/` sind ausgenommen.
 
 ---
 

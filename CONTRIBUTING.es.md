@@ -8,7 +8,7 @@ convenciones que mantienen el código legible a medida que crece.
 
 | Herramienta | Versión | Usada para                                    |
 | ----------- | ------- | --------------------------------------------- |
-| Go          | ≥ 1.26.5 | kernel, CLI, panel, tests                     |
+| Go          | ≥ 1.26.9 | kernel, CLI, panel, tests                     |
 | Node.js     | ≥ 18    | consola web (`webui/app`)                     |
 | Python      | ≥ 3.10  | sidecar de voz, adaptadores de agentes        |
 
@@ -17,7 +17,7 @@ convenciones que mantienen el código legible a medida que crece.
 ```bash
 git clone https://github.com/Xustalis/OpenPanda
 cd openpanda
-make run            # arranca el daemon con la configuración de ejemplo
+make run            # arranca el daemon desde el código fuente con config.yaml
 make web            # compila la consola en webui/panel/dist (go:embed)
 make build-webui    # sidecar del panel independiente con la consola embebida
 ```
@@ -38,12 +38,12 @@ Un pull request se fusiona solo cuando **todas** las puertas están en verde.
 Ejecútalas localmente antes de hacer push:
 
 ```bash
-make gate           # build + vet + test + race (la puerta de fusión)
-gofmt -l internal/ cmd/ adapters/ webui/panel/   # no debe imprimir nada
+make gate           # fmt-check + vet + build + adapter-test + test + race-focused
+make gate-all       # gate + web-gate + las dos comprobaciones pty de la TUI
 cd webui/app && npm run typecheck                # si tocaste la consola web
 ```
 
-CI ejecuta las mismas comprobaciones como trabajos en paralelo — `lint` (gofmt + vet), `test`, `race` (acotado a los paquetes calientes en concurrencia mediante `make race-focused`), `web` (typecheck + tests de node + el build de la consola incrustada) y la matriz multiplataforma — y este `make gate` completo sigue siendo la vara local; mantén ambos en verde.
+CI ejecuta las mismas comprobaciones como trabajos en paralelo — `lint` (gofmt + vet), `test`, `race` (acotado a los paquetes calientes en concurrencia mediante `make race-focused`), `web` (typecheck + tests de node + el build de la consola incrustada), el contrato de adaptadores (`tests/adapter_contract_test.py`), las comprobaciones pty de la TUI y la matriz multiplataforma. `make gate` / `make gate-all` son los equivalentes locales — mantenlos en verde.
 
 - **`go test -race ./...` debe pasar** — el kernel es un sistema concurrente
   (registro de pares, almacén de tareas, hub SSE); cualquier hallazgo del

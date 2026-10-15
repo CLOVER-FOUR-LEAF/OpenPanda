@@ -8,7 +8,7 @@ that keep the codebase readable as it grows.
 
 | Tool    | Version | Needed for                    |
 | ------- | ------- | ----------------------------- |
-| Go      | ≥ 1.26.5 | kernel, CLI, panel, tests     |
+| Go      | ≥ 1.26.9 | kernel, CLI, panel, tests     |
 | Node.js | ≥ 18    | web console (`webui/app`)     |
 | Python  | ≥ 3.10  | voice sidecar, agent adapters |
 
@@ -17,7 +17,7 @@ that keep the codebase readable as it grows.
 ```bash
 git clone https://github.com/Xustalis/OpenPanda
 cd openpanda
-make run            # daemon with the example config
+make run            # daemon from source against config.yaml
 make web            # build the console into webui/panel/dist/app (go:embed)
 make build-webui    # standalone panel sidecar with the console embedded
 ```
@@ -38,16 +38,17 @@ A pull request is merged only when **all** gates are green. Run them locally
 before pushing:
 
 ```bash
-make gate           # build + vet + test + race (the merge gate)
-gofmt -l internal/ cmd/ adapters/ webui/panel/   # must print nothing
-cd webui/app && npm run typecheck                # web console changes
+make gate           # fmt-check + vet + build + adapter-test + test + race-focused
+make gate-all       # gate + web-gate + the two TUI pty contract checks
+cd webui/app && npm run typecheck                # quick check for console edits
 ```
 
 CI runs the same checks as parallel jobs — `lint` (gofmt + vet), `test`,
 `race` (scoped to the concurrency-hot packages via `make race-focused`),
-`web` (typecheck + node tests + the embedded-console build) and the
-cross-platform matrix — plus this full `make gate` remains the local bar;
-keep both green.
+`web` (typecheck + node tests + the embedded-console build), the adapter
+contract (`tests/adapter_contract_test.py`), the TUI pty checks and the
+cross-platform matrix. `make gate` / `make gate-all` are the local
+equivalents — keep them green.
 
 - **`go test -race ./...`** must pass — the kernel is a concurrent system
   (peer registry, task store, SSE hub); race detector findings are release
