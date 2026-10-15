@@ -56,13 +56,23 @@ network.**
   one that was wholesale rewritten**. Tightening this further needs external
   attestation (exporting/notarizing the chain head) and remains on the
   roadmap.
-- **Self-update supports out-of-band signing (optional).** The default root
-  of trust is still GitHub + TLS + the SHA-256 sums in `checksums.txt`.
-  Setting `OPENPANDA_UPDATE_PUBKEY` (Ed25519 public key, hex or base64)
-  requires releases to carry `checksums.txt.sig` — a detached signature over
-  checksums.txt — or the update is refused; `OPENPANDA_UPDATE_REPO` points
-  updates at a self-hosted release channel. The code-side capability is
-  ready ahead of signing being enabled on the official channel.
+- **Self-update verifies a detached Ed25519 signature.** Since
+  v0.0.11-preview the official channel ships `checksums.txt.sig` — a
+  detached signature over `checksums.txt`. The official release public key
+  is compiled into every binary (`internal/version.ReleasePubKey` source
+  default; release packaging can rotate it via ldflags), so forged checksums
+  travelling the same channel as the archive are refused outright:
+
+  `a84a556bd45ee7743437d7b9b0c4f6e0df34c496f639b5a045d5de484f128560`
+
+  Older builds without a baked key (self-compiled artifacts predating
+  v0.0.11-preview) refuse updates by default: set
+  `OPENPANDA_UPDATE_PUBKEY=<the key above>` for a verified upgrade onto the
+  signed channel, or explicitly `OPENPANDA_UPDATE_UNSIGNED=1` to fall back
+  to checksum-only once (hashes and archives cross the same channel — an
+  escape hatch, not a posture). `OPENPANDA_UPDATE_REPO` points updates at a
+  self-hosted channel; pair it with `OPENPANDA_UPDATE_PUBKEY` set to that
+  channel's own key.
 - **Skill URL installs are egress-bounded.** `panda skill install <url>` and
   the corresponding panel / MCP paths only permit https (loopback excepted),
   and refuse loopback / private / link-local and other reserved addresses at

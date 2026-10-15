@@ -112,7 +112,7 @@ OpenPanda 自己不执行长程任务，而是委派给设备上安装的 agent 
 
 **如何升级？**
 
-`panda web` → 系统 → 更新：检查新版本（附 changelog 摘要）→ 下载 → 空闲时应用。daemon 会在日志里提示新版本（无法自我应用，需打开 Web 控制台操作）。一键脚本用户也可直接重跑安装命令。
+`panda web` → 系统 → 更新：检查新版本（附 changelog 摘要）→ 下载 → 空闲时应用。daemon 会在日志里提示新版本（无法自我应用，需打开 Web 控制台操作）。一键脚本用户也可直接重跑安装命令。更新默认走验签通道：二进制内置官方发布公钥，无需配置；无内置公钥的旧自编译构建被 fail-closed 拒绝时，设 `OPENPANDA_UPDATE_PUBKEY=<SECURITY.md 中的官方公钥>` 或一次性 `OPENPANDA_UPDATE_UNSIGNED=1` 即可升入签名通道。
 
 **如何彻底卸载？**
 

@@ -24,16 +24,21 @@ var Version = "0.0.11-preview"
 var Codename = "Rendezvous"
 
 // ReleasePubKey is the Ed25519 public key (hex or base64) the self-update
-// path trusts to sign checksums.txt. Release packaging bakes it in via
-// -ldflags (scripts/package.sh derives it from OPENPANDA_RELEASE_KEY):
+// path trusts to sign checksums.txt. The compiled-in default below is the
+// official OpenPanda release channel's key, so every build — release or a
+// plain `make build` — verifies checksums.txt.sig out of the box instead of
+// failing closed on a missing key. Release packaging can rotate the baked
+// value via -ldflags (scripts/package.sh derives it from
+// OPENPANDA_RELEASE_KEY):
 //
 //	-X github.com/Xustalis/OpenPanda/internal/version.ReleasePubKey=<hex>
 //
-// An empty value means this build was not shipped through the signed release
-// channel — a dev build keeps checksums-only verification unless the
-// operator sets OPENPANDA_UPDATE_PUBKEY. Once a build carries a key, an
-// unsigned release is refused outright.
-var ReleasePubKey = ""
+// An operator running a self-hosted channel (OPENPANDA_UPDATE_REPO) repoints
+// verification at their own key with OPENPANDA_UPDATE_PUBKEY, or skips
+// signature verification entirely with OPENPANDA_UPDATE_UNSIGNED=1 — the env
+// knobs always win over the baked default (updateEnvOptions). An empty key
+// with no opt-out refuses downloads outright.
+var ReleasePubKey = "a84a556bd45ee7743437d7b9b0c4f6e0df34c496f639b5a045d5de484f128560"
 
 // Display returns the human-facing release identity — "v0.0.10 Apoapsis" —
 // for anywhere the build introduces itself to a user. Version alone stays

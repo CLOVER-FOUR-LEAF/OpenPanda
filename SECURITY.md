@@ -37,11 +37,19 @@ OpenPanda 是一个运行在你自己设备上的 P2P 任务编排内核。本�
   不允许再出现未签名行（防尾部剥离）。但签名锚点在数据库本身：**从未签过名的
   历史前缀无法与「被整体重写」区分**，进一步收紧需要外部存证（导出/公证链头），
   仍在路线图上。
-- **自更新支持带外签名（可选）。** 默认信任根仍是 GitHub + TLS +
-  `checksums.txt` 的 SHA-256。设置 `OPENPANDA_UPDATE_PUBKEY`（Ed25519 公钥，
-  hex 或 base64）后，release 必须附带 `checksums.txt.sig`——对 checksums.txt 的
-  分离签名——否则更新被拒绝；`OPENPANDA_UPDATE_REPO` 可把更新指向自托管的
-  发布通道。官方发布通道启用签名之前，代码侧能力已就绪。
+- **自更新经 Ed25519 分离签名验证。** 官方发布通道自 v0.0.11-preview 起为
+  `checksums.txt` 附带 `checksums.txt.sig`（对校验和文件的分离签名）。官方
+  发布公钥内置于每个二进制（`internal/version.ReleasePubKey` 源码默认值，
+  release 打包亦可经 ldflags 轮换），与压缩包同信道送达的伪造 checksums
+  会被直接拒绝：
+
+  `a84a556bd45ee7743437d7b9b0c4f6e0df34c496f639b5a045d5de484f128560`
+
+  没有内置公钥的旧构建（v0.0.11-preview 之前的自编译产物）默认拒绝更新：
+  设 `OPENPANDA_UPDATE_PUBKEY=<上面的公钥>` 可带验签升入签名通道，或显式
+  `OPENPANDA_UPDATE_UNSIGNED=1` 一次性退回 checksum-only（哈希与压缩包同
+  信道，仅作逃生）。`OPENPANDA_UPDATE_REPO` 指向自托管发布通道时，
+  用 `OPENPANDA_UPDATE_PUBKEY` 配置该通道自己的公钥。
 - **技能 URL 导入有出站边界。** `panda skill install <url>` 及对应面板 / MCP
   路径只允许 https（环回地址除外），且拨号时拒绝环回 / 私网 / 链路本地等
   保留地址，防止把节点变成内网探测跳板。经 `skills.hub_url` 配置的私有 hub

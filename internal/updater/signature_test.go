@@ -113,17 +113,26 @@ func TestDownloadReleaseSignatureEnforcement(t *testing.T) {
 
 	// A configured key with no signature asset must refuse (fail closed).
 	noSig := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if strings.HasSuffix(r.URL.Path, "checksums.txt") {
+		switch {
+		case strings.HasSuffix(r.URL.Path, "checksums.txt"):
 			fmt.Fprint(w, sums)
-			return
+		case strings.HasSuffix(r.URL.Path, name):
+			_, _ = w.Write(asset)
+		default:
+			http.NotFound(w, r)
 		}
-		http.NotFound(w, r)
 	}))
 	defer noSig.Close()
 	cleanup2 := SetDownloadBaseForTest(noSig.URL)
 	defer cleanup2()
 	if _, err := downloadRelease(context.Background(), "test/repo", version, t.TempDir(), key, false); err == nil {
 		t.Fatal("an unsigned release passed with a release key configured")
+	}
+	// …but allowUnsigned clears even a configured/baked key: the operator's
+	// opt-out is what keeps a self-hosted channel that ships no signature
+	// reachable from a build that has one compiled in.
+	if _, err := downloadRelease(context.Background(), "test/repo", version, t.TempDir(), key, true); err != nil {
+		t.Fatalf("unsigned channel refused under allowUnsigned despite a configured key: %v", err)
 	}
 
 	// No key: the checksum-only posture is a refusal by default — the
