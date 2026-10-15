@@ -83,6 +83,21 @@ func RequiresForActionSpec(requires []string, spec *ActionSpec) []string {
 	return out
 }
 
+// ScreenCaptureActuatorID is the canonical card id for the desktop
+// screen-capture actuator (drivers/panda-screen). Trust zones bound on it:
+// whatever the driver produces is the node's display content, the most
+// sensitive artifact class the bus can carry.
+const ScreenCaptureActuatorID = "hardware:screen_capture"
+
+// ScreenSensitiveAbility reports whether an ability id denotes desktop
+// screen capture. The match goes through AbilityMatches so a requirement
+// pattern ("hardware:*") or the exact id resolve the way routing does —
+// conservative by construction: a token that COULD resolve to the screen
+// actuator counts as sensitive.
+func ScreenSensitiveAbility(id string) bool {
+	return id != "" && AbilityMatches(ScreenCaptureActuatorID, id)
+}
+
 // NativeAbility is a deterministic command this node can run.
 type NativeAbility struct {
 	ID          string   `yaml:"id" json:"id"`

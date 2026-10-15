@@ -14,10 +14,12 @@
 package trust
 
 import (
+	"encoding/json"
 	"fmt"
 	"strings"
 
 	"github.com/Xustalis/OpenPanda/internal/bus"
+	"github.com/Xustalis/OpenPanda/internal/ledger"
 )
 
 // Level is a peer's trust tier.
@@ -106,6 +108,12 @@ type SendPolicy struct {
 	Inputs bool
 	// Consent permits the tier-2 consent grant to ride the delegate.
 	Consent bool
+	// Screen permits executing a task that drives a screen-capture actuator:
+	// its result IS the desktop's pixels — the most sensitive payload class
+	// the bus carries. False bars the dispatch outright (the task reroutes to
+	// a mesh peer or fails); there is no narrower form of screen capture to
+	// clamp toward, the way MaxContext has "pointer".
+	Screen bool
 }
 
 // AcceptPolicy is the inbound admission rule for delegates whose origin sits
@@ -191,6 +199,10 @@ func DefaultSend(l Level) SendPolicy {
 			ProjectPack: false,
 			Inputs:      false,
 			Consent:     false,
+			// Screen content defaults OFF for semi-trusted tiers: a guarded
+			// peer is one misconfig away from being a stranger, and display
+			// pixels are not the payload to test that distance with.
+			Screen: false,
 		}
 	case Open:
 		return SendPolicy{Delegate: false}
@@ -201,6 +213,7 @@ func DefaultSend(l Level) SendPolicy {
 			ProjectPack: true,
 			Inputs:      true,
 			Consent:     true,
+			Screen:      true,
 		}
 	}
 }
@@ -231,6 +244,11 @@ type Needs struct {
 	FullContext bool
 	// Consent: a tier-2 grant rides the payload.
 	Consent bool
+	// Screen: the task drives a screen-capture actuator — the produced
+	// artifact is the executor's display content. A peer whose ceiling bars
+	// Screen must not host the run at all (its output is the exposure, not
+	// an input it was handed).
+	Screen bool
 }
 
 // NeedsOf derives the needs from the assembled payload — usable wherever a
@@ -247,7 +265,31 @@ func NeedsOf(p bus.TaskDelegatePayload) Needs {
 		Inputs:      len(p.Inputs) > 0 || len(p.BundledArtifacts) > 0 || p.ContextType == "file",
 		FullContext: contextRank(p.ContextLevel) >= 2,
 		Consent:     p.Authorized,
+		Screen:      ScreenSensitiveSpec(p.Requires, p.SpecJSON),
 	}
+}
+
+// ScreenSensitiveSpec reports whether the task's declared abilities drive
+// desktop screen capture — via a requires token that resolves to the screen
+// actuator, or an action_spec naming it directly. An unparseable spec fails
+// open on this check: the requires list still says what the task asked for,
+// and a malformed action_spec cannot execute the actuator anyway.
+func ScreenSensitiveSpec(requires []string, specJSON string) bool {
+	for _, r := range requires {
+		if ledger.ScreenSensitiveAbility(r) {
+			return true
+		}
+	}
+	if strings.TrimSpace(specJSON) == "" {
+		return false
+	}
+	var holder struct {
+		ActionSpec *ledger.ActionSpec `json:"action_spec"`
+	}
+	if err := json.Unmarshal([]byte(specJSON), &holder); err != nil || holder.ActionSpec == nil {
+		return false
+	}
+	return ledger.ScreenSensitiveAbility(holder.ActionSpec.TargetActuator)
 }
 
 // ExecutorOK reports whether a peer at this policy's tier may EXECUTE a task
@@ -263,6 +305,9 @@ func (p SendPolicy) ExecutorOK(n Needs) bool {
 		return false
 	}
 	if n.Inputs && !p.Inputs {
+		return false
+	}
+	if n.Screen && !p.Screen {
 		return false
 	}
 	return true
@@ -284,7 +329,9 @@ func (p SendPolicy) MayHoldContext() bool { return contextRank(p.MaxContext) > 0
 // an audit note rather than a bound. It is only consulted on the
 // input-direction pull (executor or a downstream hop fetching work material);
 // an upstream peer pulling the task's own outputs back is reading its own
-// work product and is governed by participation alone.
+// work product and is governed by participation — except screen-capture
+// outputs, which stay mesh-only at the transfer layer regardless of who
+// commissioned the task (the producer refuses the serve).
 func (p SendPolicy) MayHoldInputs() bool { return p.Inputs }
 
 // ClampApplied notes what Apply actually removed, for the audit trail.

@@ -254,6 +254,17 @@ func (c *Core) admitDelegate(ctx context.Context, taskID string, p bus.TaskDeleg
 			reason: fmt.Sprintf("origin at %s trust may not push work (offer/bid market is not built)", tier),
 		}
 	}
+	// Screen capture is mesh-only work: the task's output IS this desktop's
+	// pixels. A non-mesh origin must never be able to commission one — not
+	// under auto, not under review (review parks the task pending a human,
+	// but the exposure is the same the moment it is let through), and a
+	// policy_llm verdict may not relax it either.
+	if trust.NeedsOf(p).Screen {
+		return delegateAdmission{
+			code:   bus.DeclineCodeTrustRefused,
+			reason: fmt.Sprintf("screen capture tasks admit mesh origins only (origin at %s trust)", tier),
+		}
+	}
 	mode := pol.Mode
 	if pol.PolicyLLM != trust.LLMOff {
 		v, vReason := c.policyVerdict(ctx, p)
@@ -441,6 +452,7 @@ func needsForTask(t Task) trust.Needs {
 	return trust.Needs{
 		Pack:   t.Project != "",
 		Inputs: len(t.Inputs) > 0 || t.ContextType == "file" || t.Project != "",
+		Screen: trust.ScreenSensitiveSpec(t.Requires, t.SpecJSON),
 	}
 }
 
@@ -450,6 +462,7 @@ func needsForInput(in TaskInput) trust.Needs {
 	return trust.Needs{
 		Pack:   in.Project != "",
 		Inputs: in.Project != "" || in.ContextType == "file",
+		Screen: trust.ScreenSensitiveSpec(in.Requires, in.SpecJSON),
 	}
 }
 

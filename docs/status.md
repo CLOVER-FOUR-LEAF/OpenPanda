@@ -65,8 +65,8 @@ P0 安全发现（路径穿越、结果送达、TUI 退出）已关闭，P1 安�
 | **任务间消息板**（v0.0.11-preview 实验预览） | 🟡 Experimental | `internal/core/messages.go`：`plan:<id>` / `task:<parent>` 两种 scope 的槽位板（每发送者每收件人一格、新覆盖旧）；agent 以结构化 `messages` 字段或 `PANDA_MSG` 行发消息，轮边界折进 `[sibling board]`；`bus.MsgTaskMessage` 跨节点 owner 扇出，接收端校验成员资格；`panda task board <id>` 查看 |
 | **会话树 / 自动压缩 / RPC / 订阅 OAuth**（v0.0.10） | 🟡 Experimental | `panda session fork`/`tree`/`/fork`、溢出历史折叠为 running digest、`panda rpc` NDJSON-stdio、`panda auth login anthropic` |
 | **会话 AEAD + 蓝牙式配对**（v0.0.11-preview 实验预览） | 🟡 Experimental | hello `caps` 协商 `sessaead` 逐连接 AES-256-GCM（HKDF 绑两端 nonce/身份）；`panda pair` X25519 + 短验证码确认 + 密封下发共享密钥 |
-| **信任分区**（v0.0.11-preview 实验预览） | 🟡 Experimental | `network.peers[].trust`：mesh/guarded/open 三档（`panda nodes trust`）；guarded 钳制委派暴露面 + 准入策略（`network.trust.accept.guarded`，可选 policy_llm）；非 mesh 来源任务默认截留模型凭据（`model_creds`）；签名 `task_accept`；`routing.reputation` 本地信誉 |
-| 引脚驱动舵机（香橙派） | 🟡 通路已落地，真机未验 | v0.0.10 actuator 派发：卡片声明 `actuators` + argv 模板，`spec.action_spec` 跨委派传递，执行端替换占位符跑驱动；`drivers/` 随发行包附带 servo/mic/camera/notify/mcu 五个参考实现 |
+| **信任分区**（v0.0.11-preview 实验预览） | 🟡 Experimental | `network.peers[].trust`：mesh/guarded/open 三档（`panda nodes trust`）；guarded 钳制委派暴露面 + 准入策略（`network.trust.accept.guarded`，可选 policy_llm）；非 mesh 来源任务默认截留模型凭据（`model_creds`）；签名 `task_accept`；`routing.reputation` 本地信誉；截屏任务 mesh 独占（`send.guarded.screen`，准入/发送/产物拉取三道闸） |
+| 引脚驱动舵机（香橙派） | 🟡 通路已落地，真机未验 | v0.0.10 actuator 派发：卡片声明 `actuators` + argv 模板，`spec.action_spec` 跨委派传递，执行端替换占位符跑驱动；`drivers/` 随发行包附带 servo/mic/camera/notify/mcu/screen/input 七个参考实现 |
 | 最短路径多跳中继 | ✅ 图路由已落地 | 邻居广告构建链路状态图，边权取 `LinkMetrics` 的 RTT 采样（无测量走 `unknownLinkCost`），`graphFirstHop` 跑 Dijkstra 取全局最便宜路径的第一跳（`internal/scheduler/route.go`） |
 
 ## 两条入口都可达

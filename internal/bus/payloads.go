@@ -506,6 +506,13 @@ type TaskResultPayload struct {
 	// hands it to the successor stages as their input; the executor stays the
 	// node that holds the bytes until someone pulls them.
 	OutputArtifact string `json:"output_artifact,omitempty"`
+	// ScreenOutput marks the output as display content (the run drove a
+	// screen_sensing actuator). Every hop that adopts the result stamps its
+	// own task row, so artifact_fetch can apply the mesh-only rule even for
+	// operator-defined actuator ids the requires/spec predicates cannot
+	// name. It can only ever make a task MORE restricted on the wire — a
+	// forged flag shrinks an audience, it cannot widen one.
+	ScreenOutput bool `json:"screen_output,omitempty"`
 	// FilesChanged lists the workdir-relative paths the run added, removed or
 	// modified — the result's footprint, so the delegator sees what the task
 	// actually touched rather than trusting the agent's prose. Capped for the

@@ -174,7 +174,7 @@ func TestTrustConfigOverrides(t *testing.T) {
 	yes, no := true, false
 	tc := TrustConfig{
 		Send: TrustSendConfig{Guarded: TrustSendPolicy{
-			ContextLevel: "summary", Consent: &yes, ProjectPack: &no,
+			ContextLevel: "summary", Consent: &yes, ProjectPack: &no, Screen: &yes,
 		}},
 		Accept: TrustAcceptConfig{Guarded: TrustAcceptPolicy{Mode: "review", PolicyLLM: "shadow", ForeignConsent: "honor", ModelCreds: "provide"}},
 	}
@@ -201,6 +201,17 @@ func TestTrustConfigOverrides(t *testing.T) {
 	}
 	if m := tc.SendPolicyFor(trust.Mesh); !m.ProjectPack || !m.Consent || m.MaxContext != "full" {
 		t.Fatalf("mesh is not tunable, got %+v", m)
+	}
+	// The screen ceiling defaults deny under guarded and honors an explicit
+	// same-owner override — but mesh stays the built-in ceiling regardless.
+	if d := (TrustConfig{}).SendPolicyFor(trust.Guarded).Screen; d {
+		t.Fatal("guarded screen default must be deny")
+	}
+	if !tc.SendPolicyFor(trust.Guarded).Screen {
+		t.Fatal("screen:true override must admit screen work for guarded")
+	}
+	if !((TrustConfig{}).SendPolicyFor(trust.Mesh).Screen) {
+		t.Fatal("mesh must keep the screen bit (pre-feature parity)")
 	}
 	if o := tc.SendPolicyFor(trust.Open); o.Delegate {
 		t.Fatal("open must never delegate")

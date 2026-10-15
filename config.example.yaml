@@ -131,6 +131,11 @@ network:
   #       project_pack: false        # ship project memory inline
   #       inputs: false              # ship artifact/worktree references
   #       consent: false             # let tier-2 grants ride the delegate
+  #       screen: false              # run screen-capture tasks — the output
+  #                                # IS this desktop's pixels, so the default
+  #                                # denies: display content crosses mesh
+  #                                # links only. Set true for the same-owner
+  #                                # case (your own VPS on a rough segment).
   #   accept:
   #     guarded:                 # inbound admission for guarded-origin work
   #       mode: "auto"             # auto | review | refuse

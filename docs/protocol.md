@@ -229,6 +229,12 @@ hello 校验失败时服务端回 `hello_reject`（`reason`：`auth` 签名/密�
   `pointer`（快照只在审计拉的 `context_fetch` 里出网）、`project_pack`/
   `inputs`/同意签名一律剥离；会因钳制失去必备输入的任务改走重路由而非
   降级送达。`open` 档对端不发也不收推送态委派（offer/bid 市场未建）。
+  **截屏任务是一等敏感类别**：`requires`/`action_spec` 命中
+  `hardware:screen_capture`（含 `hardware`/`hardware:*` 这类可解析到它的
+  宽令牌）的任务只在 mesh 链上移动——非 mesh 来源在准入即拒（
+  `trust_policy_refused`），发送侧钳制直接拒绝而非降级，其输出工件在
+  artifact_fetch/push 服务侧同样只放给 mesh 对端（参与关系与签名 grant
+  都不足以放松这一条）；`screen: true` 是同一所有者场景的显式开关。
 
 ### `task_accept` / `task_decline`
 

@@ -286,6 +286,11 @@ type TrustSendPolicy struct {
 	ProjectPack  *bool  `yaml:"project_pack"`  // ship project memory inline
 	Inputs       *bool  `yaml:"inputs"`        // ship artifact/worktree references
 	Consent      *bool  `yaml:"consent"`       // let the tier-2 grant ride the delegate
+	// Screen lets the tier execute screen-capture tasks — the output IS this
+	// desktop's pixels, so the default is deny even under "inputs: true":
+	// display content only crosses mesh links unless the operator says
+	// otherwise (the same-owner VPS case).
+	Screen *bool `yaml:"screen"` // may the tier run screen-capture tasks
 }
 
 // TrustAcceptPolicy is the inbound admission rule for delegates whose origin
@@ -376,6 +381,9 @@ func (t TrustConfig) SendPolicyFor(l trust.Level) trust.SendPolicy {
 	}
 	if g.Consent != nil {
 		p.Consent = *g.Consent
+	}
+	if g.Screen != nil {
+		p.Screen = *g.Screen
 	}
 	return p
 }
