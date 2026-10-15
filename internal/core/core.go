@@ -271,8 +271,10 @@ type Core struct {
 	// participant's stale "yes" expires within artAuthTTL (staged bytes are
 	// hash-verified no matter who delivered them, which bounds the damage
 	// a window-old yes can do). A stranger cannot mint entries — storing
-	// requires a real positive verdict.
-	artAuthCache sync.Map // string -> time.Time (verdict expiry)
+	// requires a real positive verdict. Screen verdicts re-check the peer's
+	// tier on every hit, so a trust demotion cuts a display-content
+	// transfer mid-flight instead of riding out the TTL.
+	artAuthCache sync.Map // string -> artAuthVerdict
 
 	// running maps task_id -> the CancelFunc of the context its execution runs
 	// under, so a lease expiry, a cancel message or a shutdown can actually stop

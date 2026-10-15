@@ -76,8 +76,10 @@ The web console needs node/npm only when rebuilding it (`make web`,
 - `config/` + `config.example*.yaml` — config schema and sample node
   cards. `testdata/` holds `node-a.yaml`/`node-b.yaml`/`deploy-opi.yaml`
   fixtures.
-- `deploy/`, `drivers/`, `scripts/` — deployment manifests, hardware
-  profiles, install scripts.
+- `deploy/`, `drivers/`, `scripts/` — deployment manifests, the reference
+  actuator drivers (`panda-*` scripts the card advertises as `hardware:*`
+  abilities — servo, mic, camera, notify, MCU, screen capture, GUI input),
+  install scripts.
 - `docs/` — design docs and review reports.
 
 ### `internal/` by concern

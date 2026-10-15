@@ -238,6 +238,91 @@ func TestApplyIsMonotone(t *testing.T) {
 	}
 }
 
+// TestScreenSensitiveSpec: the wire predicate must catch every shape a
+// screen-driving task can take — a direct requires token, a broad namespace
+// token that could resolve to it, and an action_spec naming the actuator —
+// and must not false-positive on ordinary hardware or malformed input (a
+// spec too broken to parse can never execute the actuator anyway).
+func TestScreenSensitiveSpec(t *testing.T) {
+	yes := func(requires []string, spec string) {
+		t.Helper()
+		if !ScreenSensitiveSpec(requires, spec) {
+			t.Errorf("ScreenSensitiveSpec(%v, %s) = false, want true", requires, spec)
+		}
+	}
+	no := func(requires []string, spec string) {
+		t.Helper()
+		if ScreenSensitiveSpec(requires, spec) {
+			t.Errorf("ScreenSensitiveSpec(%v, %s) = true, want false", requires, spec)
+		}
+	}
+
+	yes([]string{"hardware:screen_capture"}, "")
+	yes([]string{"sys:info", "hardware:screen_capture"}, "")
+	// A broad token that CAN resolve to the screen actuator marks the task:
+	// ExecutorOK refuses before the scheduler picks the actuator, so the
+	// conservative verdict is the only safe one.
+	yes([]string{"hardware"}, "")
+	yes([]string{"hardware:*"}, "")
+	// The action_spec alone flags it even when requires was forgotten.
+	yes(nil, `{"action_spec":{"target_actuator":"hardware:screen_capture","action":"capture"}}`)
+	yes([]string{"sys:info"}, `{"action_spec":{"target_actuator":"hardware:screen_capture","action":"capture"}}`)
+
+	no(nil, "")
+	no([]string{"hardware:gui_input"}, "")
+	no([]string{"hardware:camera_snap"}, "")
+	no([]string{"sys:info"}, `{"action_spec":{"target_actuator":"hardware:servo_rotate","action":"rotate"}}`)
+	// Malformed or unrelated specs cannot grant anything: they fail the
+	// executor's own parse long before an actuator could run.
+	no(nil, `{"action_spec":`)
+	no(nil, `{`)
+	no(nil, `{"scope":"src/"}`)
+}
+
+// TestScreenSendGate: display pixels are the strictest send ceiling — mesh
+// imposes nothing (pre-feature parity), guarded defaults deny outright even
+// though it still delegates ordinary work, and a needs bit set by
+// ScreenSensitiveSpec disqualifies the tier at every routing gate.
+func TestScreenSendGate(t *testing.T) {
+	if !DefaultSend(Mesh).Screen {
+		t.Fatal("mesh must permit screen work (pre-feature parity)")
+	}
+	if DefaultSend(Guarded).Screen {
+		t.Fatal("guarded must default to denying screen work")
+	}
+	guarded := DefaultSend(Guarded)
+	if !guarded.ExecutorOK(Needs{}) {
+		t.Fatal("guarded still executes ordinary work")
+	}
+	if guarded.ExecutorOK(Needs{Screen: true}) {
+		t.Fatal("guarded executed a screen task under the default ceiling")
+	}
+	// The explicit override restores the same-owner case.
+	guarded.Screen = true
+	if !guarded.ExecutorOK(Needs{Screen: true}) {
+		t.Fatal("screen:true override must admit screen work")
+	}
+}
+
+// TestNeedsOfScreen: NeedsOf must derive the screen bit from the payload the
+// same way the store-side derivations do, or one gate passes what another
+// refuses — a relay re-checking NeedsOf(p) is precisely that second gate.
+func TestNeedsOfScreen(t *testing.T) {
+	p := bus.TaskDelegatePayload{Requires: []string{"hardware:screen_capture"}}
+	if n := NeedsOf(p); !n.Screen {
+		t.Fatalf("screen requires needs = %+v, want Screen", n)
+	}
+	p = bus.TaskDelegatePayload{
+		SpecJSON: `{"action_spec":{"target_actuator":"hardware:screen_capture","action":"capture"}}`,
+	}
+	if n := NeedsOf(p); !n.Screen {
+		t.Fatalf("screen spec needs = %+v, want Screen", n)
+	}
+	if n := NeedsOf(bus.TaskDelegatePayload{Intent: "plain"}); n.Screen {
+		t.Fatal("ordinary task must not carry the screen need")
+	}
+}
+
 // TestStoredLevel: mesh is the absence of a zone, so every write path stores
 // it as "" — an explicit "mesh" would leave needless tier mappings in configs
 // that never opted into trust zones (and break the scalar YAML form).

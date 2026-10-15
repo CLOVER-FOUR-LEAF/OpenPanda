@@ -40,6 +40,27 @@ OpenPanda（**Open** **P**ersonal **A**daptive **N**ode-based **D**istributed **
 
 ## [Unreleased]
 
+## [0.0.11] - 2026-10-15 — "Rendezvous"
+
+安定版 v0.0.11——コードネーム **Rendezvous**（軌道上のランデブー）。本カットはプレビュー線の全量——署名 hello 内でネゴシエートする接続ごとの AEAD、Bluetooth 風ペアリング、署名済み検出ビーコンと安定した `k:<pub>` アイデンティティ、マルチホップ経路でも宛先を失わないハードノード固定、部分メッシュのデータプレーン、タスク間メッセージボード、エージェント作業の git ロールバック——に今サイクルの追加分を畳み込みます：デスクトップノードに computer-use の目と手（画面キャプチャと入力合成が第一級アクチュエータに、POSIX・素の Windows の両方で）、タスク成果物がパック済み artifact として CLI とコンソールから取得可能に、そして表示コンテンツが委任・push・pull・スクリーンステージの出力を次ステージの入力として消費する経路まで、その固有の mesh-only 信頼ルールの下を端から端まで通ります。
+
+### 追加
+
+- **Computer-use の「目」と「手」** —— 2 つの新しいリファレンスアクチュエータがデスクトップノードを GUI 作業に対応させます：`drivers/panda-screen` は画面をキャプチャ（macOS `screencapture`、Linux grim/scrot/ImageMagick、Windows PowerShell）し `hardware:screen_capture` として広告、`drivers/panda-input` は入力を合成（cliclick+osascript / xdotool / ydotool / PowerShell——move、click、dblclick、type、key、scroll、pos）し `hardware:gui_input` として広告。クリックとキーは不可逆のため tier 2 にゲート。`DetectActuators` は bundled `drivers/` ツリーを自動検出（`OPENPANDA_DRIVERS_DIR` が排他的に優先、次に PATH、最後に同梱レイアウト）、`panda install` とリリースパッケージがドライバを同梱し、`Interface:"desktop"` と宣言されたアクチュエータは GUI セッションが存在すると思われる場合のみ広告されます——macOS はコンソール所有者、Linux は `DISPLAY`/`WAYLAND_DISPLAY`、Windows は Services セッション除外、`OPENPANDA_GUI_SESSION` で上書き可——ヘッドレスなデーモンが見えない画面を申告することはもうありません。ルーティングプロンプトは「キャプチャ → 理解 → 操作」のチェーンを教え込み済みです。
+- **タスク成果物を取得可能に** —— ベアタスクのプライベート作業ディレクトリがパックされ出力成果物として登録されるようになりました（アクチュエータのスクリーンショットやエージェントのレポートファイルが `work_path` 下に置き去りにならない。空ディレクトリは何もパックせず、固定/プロジェクトディレクトリは一括パックされません）。取得面：`panda task artifact <id> [--list|--file <パス>|--out <ディレクトリ>]`、パネルの認証済み 3 エンドポイント（`GET /api/tasks/{id}/artifact`、`/artifact/files`、`/artifact/file?path=`）、コンソールの ArtifactSection がマニフェスト一覧・画像/テキストのインラインプレビュー・単一ファイルまたはバンドル全体のダウンロードを提供。`artifact.Store` に `Entries`/`OpenEntry` を追加——展開せずにマニフェスト一覧、パストラバーサル検査付きの単一ファイルストリーミング。
+- **[実験的] スクリーンキャプチャタスクは mesh 限定** —— 表示コンテンツは通常の参加者チェックではなく専用の信頼ビットを持ちます：`requires`/`action_spec` が `hardware:screen_capture`（それに解決し得る `hardware:*` などの広いトークンを含む）にヒットしたタスクはマークされ、guarded ピアは送信側でフィルタされ、非 mesh 起源は准入時に拒否（`trust_policy_refused`）、成果物のサービス側はスクリーン出力を mesh ピアにのみ放出——参加関係や署名付き grant では拡大できません。オペレータ定義の `screen_sensing` カテゴリアクチュエータ ID は生産者自身のカードでしか分類できないため、実行側がクレーム時に永続化された `screen_output` マークを打ち（マイグレーション v45）、`task_result` に乗せて各委任ホップが自身の行を再マークします。認可判定キャッシュは screen ビットを記憶し、ヒットのたびにピアのティアを再検査——信頼降格は転送を即座に切断します。スクリーンステージの出力が次ステージの入力として受け渡される場合も同じ拘束が続きます：オーケストレーターが入力 ref に来歴マークを打ち、表示バイトを消費するタスクは自身も display-bound と見なされます——その作業ツリー、ひいては生成物 artifact がピクセルを埋め込み得るため——マークはステージからステージへ連鎖します。`network.trust.send.guarded.screen: true` は同一所有者向けの明示的なスイッチです。
+- **Windows の computer-use エントリポイント** —— `drivers/panda-screen.ps1`、`drivers/panda-input.ps1`、`drivers/panda-notify.ps1` により「目・手・通知」ドライバが素の Windows ノードで動作します——POSIX 版と同じ CLI・同じ終了コード、git-bash 不要。検出はこれらを `pwsh -File <スクリプト>` に解決します（pwsh 優先、同梱の PowerShell 5.1 にフォールバック）。`-File` はすべての引数をリテラル文字列としてスクリプトへ渡すため、action_spec 由来のテキストは常にテキストのままです。`.cmd`/`.bat` ラッパーは意図的に自動解決しません——cmd.exe は独自の規則でコマンドラインを解析するため、`&`・`%`・引用符を含む引数が 2 つ目のコマンドに分割され得ます（golang/go#27199）。
+
+### 修正
+
+- **署名済みアップデートチャネルの残りの隙間を閉鎖** —— 公式 Ed25519 リリース鍵が `ReleasePubKey` のデフォルトとしてコンパイル組み込みになり、あらゆるビルドが `checksums.txt.sig` をすぐに検証（鍵なし開発ビルドでの fail-closed を解消）。`OPENPANDA_UPDATE_UNSIGNED` はセルフホストの無署名チャネル向け明示的エスケープハッチ。`install-local` は `~/.local/bin/panda` をリリースプレフィックスツリーへのシンボリックリンクとして維持し、`panda update` が監視対象デーモンが実際に実行しているイメージを入れ替えるようにします。
+- **`panda-input` の BSD sed** —— キー名の大文字化に GNU 専用の `sed` エスケープを使っており、macOS では `key up` を `uup` に壊していました。明示的な大小写分岐に修正。
+- **Windows ノードは同梱ドライバを一切広告できなかった** —— 探索は拡張子なしの POSIX スクリプトだけを対象にしていました：Windows の os.Stat は実行ビットを返さず、LookPath は拡張子のないファイルに一致できないため、デスクトップのある Windows ノードは `hardware:*` アクチュエータを 1 つも広告せず、computer-use の眼と手は事実上 macOS/Linux にしか存在しませんでした。解決はプラットフォーム別のファイル名（Windows は `.ps1`/`.exe`、unix は裸のスクリプト）になり、カードに載るのは裸のパスではなく起動方法そのもの——`PruneUnavailableActuators` が残すのはこのホストで実際に動くものだけです。
+- **PATH 外にインストールされた agent CLI も Windows で見つかる** —— `InstalledBinary` のフォールバックディレクトリは Homebrew/usr-local といった unix パスばかりで、実行可能性チェックは unix 実行ビット（Windows では決して立たない）を要求していたため、フォールバック全体が Windows では死んだコードでした。ディレクトリとチェックはプラットフォーム別になりました（`%APPDATA%\npm`、winget Links、scoop shims、cargo）。
+- **`panda-input key tab` / `key F5`** —— ドキュメント記載の名前付きキーは、バックエンド表が大文字小文字を区別して照合する前に小文字化されていたため、Tab と F キーは macOS では "unknown key" として失敗し、Windows 分岐ではリテラルの英字が入力されていました。両バックエンドに正規名を明記しました。
+- **`panda metrics --runtime` が Windows でもデーモンの負荷を報告** —— これまでこの行は生存確認のみでした（`ps` がないため）。RSS は GetProcessMemoryInfo、CPU/稼働時間は GetProcessTimes から取得し、CPU は単一サンプルでは出せない瞬間パーセントではなく累積消費時間（"cpu=4.2s"）として表示します。
+- **裸の `panda --help` が新しい task 動詞を掲載** —— 最上位の usage は `task artifact` と `task board` を載せていませんでした（`task` サブ usage、シェル補完、README にはあり）、`--help` だけではアーティファクト取得口に気づけませんでした。
+
 ## [0.0.11-preview] - 2026-10-14
 
 v0.0.11 プレビュー —— コードネーム **Rendezvous**（軌道上の会合）。本カットは系統全体を1つのプレリリースに統合します：ピアリンクは署名済み hello 内で接続ごとの AEAD 暗号化をネゴシエートし、デバイスのノードネットワークへの参加は Bluetooth ペアリングのように —— デバイスを選び、コードを照合し、両側で確認 —— 手作業のシークレットコピーは不要です。作業は gossip トポロジを通じて 2 ホップ先のノードにピン留めされ、context と成果物はホップごとに中継されます。同一プランの兄弟ステージは、終端結果を待たずに有界メッセージボード上で短いメモを交換できるようになりました。実際のチェックアウト上のエージェント作業は取り消し可能です —— `panda task revert` がタスク前の git ベースラインを復元します。信頼ティアは信頼できないピアが運べるものを絞り、タスクのライフサイクルは各段階で実際の状態を正直に報告します。本プレビューは実際の 3 台デバイス構成（macOS ↔ Windows ↔ Linux SBC）でエンドツーエンドに検証済みで、実行中のノード kill、再接続、リプレイを含みます。（alpha/beta 系統は *Periapsis* として走っていましたが、その名前は既に v0.0.9 のものであるため引退しました。）

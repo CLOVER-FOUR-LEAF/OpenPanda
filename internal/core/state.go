@@ -223,6 +223,13 @@ type Task struct {
 	Needs          []string
 	Inputs         []bus.ArtifactRef
 	OutputArtifact string
+	// ScreenOutput marks a task whose run drove a screen_sensing actuator —
+	// its produced artifact IS display content. The executor stamps it at
+	// claim time (its card is authoritative for operator-defined actuator
+	// ids) and every delegator hop re-stamps it from the task_result flag,
+	// so every node holding the row recognizes the output's sensitivity
+	// without needing the producer's card.
+	ScreenOutput bool
 
 	// Remote is stamped at intake when this row was created by the delegate
 	// handler — i.e. the intent text arrived over the wire — versus a local

@@ -33,6 +33,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"sort"
@@ -44,6 +45,7 @@ import (
 	"github.com/Xustalis/OpenPanda/internal/plan"
 	"github.com/Xustalis/OpenPanda/internal/scheduler"
 	"github.com/Xustalis/OpenPanda/internal/scheduler/queue"
+	"github.com/Xustalis/OpenPanda/internal/trust"
 )
 
 // SetStage stamps a task's place in a plan: the plan it belongs to, its stage id
@@ -549,6 +551,11 @@ func (c *Core) planStageInputs(ctx context.Context, consumer Task, byStage map[s
 			return nil, fmt.Errorf("no node known to hold artifact %s of stage %s", dep.OutputArtifact, need)
 		}
 		ref := bus.ArtifactRef{Stage: need, Hash: dep.OutputArtifact, Source: source, OfTask: dep.TaskID}
+		// A screen stage's produced tree is display content wherever it
+		// rides: stamp the provenance mark on the ref so the consumer's
+		// routing, admission and serving verdicts apply the mesh-only rule
+		// without needing the producer's row.
+		ref.Screen = dep.ScreenOutput || trust.ScreenSensitiveSpec(dep.Requires, dep.SpecJSON)
 		if _, priv, ok := c.nodeKeyPair(); ok {
 			ref.Grant = bus.SignArtifactGrant(priv, consumer.PlanID, consumer.TaskID, dep.TaskID, dep.OutputArtifact)
 			ref.Issuer = c.nodeID
@@ -752,6 +759,21 @@ func (c *Core) fetchStageInputs(ctx context.Context, t Task, workDir string) err
 			"from_stage", in.Stage, "hash", in.Hash)
 	}
 	return nil
+}
+
+// dirHasFiles reports whether root holds at least one regular file — the "is
+// there output to hand back" check before packing a private task dir. Errors
+// and non-regular entries count as no.
+func dirHasFiles(root string) bool {
+	found := false
+	_ = filepath.WalkDir(root, func(_ string, d fs.DirEntry, err error) error {
+		if err == nil && d.Type().IsRegular() {
+			found = true
+			return fs.SkipAll
+		}
+		return nil
+	})
+	return found
 }
 
 // packStageOutput packs the stage's work-dir into the local pool and records the

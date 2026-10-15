@@ -386,6 +386,15 @@ func (c *Core) claimForRun(ctx context.Context, taskID, intent string, plan *com
 			unlock()
 			return Task{}, nil, fmt.Errorf("route actuator: %w", err)
 		}
+		// Screen sensing resolved: stamp the row before anything runs. The
+		// executor's card is the only authority for operator-defined actuator
+		// ids, so the mark must originate here — upstream hops learn it from
+		// the result's screen_output flag and stamp their own rows.
+		if c.actuatorIsScreen(plan.ActuatorID) {
+			if err := c.store.SetScreenOutput(ctx, taskID); err != nil {
+				c.logger.Warn("mark screen output", "task", taskID, "err", err)
+			}
+		}
 		// The resolved actuator is a physical device: serialize its driver
 		// across every execution path this run() serves — inline submits and
 		// delegated accepts never pass through the queue's resource-key
@@ -1765,6 +1774,36 @@ func (c *Core) finalizeRun(ctx context.Context, taskID string, task Task, plan c
 		} else {
 			outputArtifact = hash
 		}
+	} else if task.Project == "" && task.WorkDir == "" && c.artifacts != nil && dirHasFiles(workDir) {
+		// A bare task runs in its private per-task dir (prepareRunDir's
+		// attachedWorkDir branch): anything it left there IS the output —
+		// an actuator's screenshot, an agent's report file. Packing it is
+		// what lets `panda task artifact` and the panel preview reach the
+		// produced files instead of stranding them under work_path. An
+		// empty dir (a pure-stdout run) packs nothing; a project/pinned
+		// dir is shared ground and is never bulk-packed by this branch.
+		if hash, perr := c.packStageOutput(ctx, task, workDir); perr != nil {
+			c.logger.Warn("pack task output", "task", taskID, "err", perr)
+		} else {
+			outputArtifact = hash
+		}
+	}
+	// Display content travels under the mesh-only rule: flag the result so
+	// every delegator hop stamps its row. The claim-time row stamp covers
+	// actuator runs resolved on this card; taskScreenSensitive covers
+	// requires/spec-declared capture and screen-marked inputs on top.
+	screenOut := outputArtifact != "" &&
+		((plan.ActuatorID != "" && c.actuatorIsScreen(plan.ActuatorID)) || c.taskScreenSensitive(task))
+	if screenOut && !task.ScreenOutput {
+		// Keep the executor's own row consistent with the result flag:
+		// resumeOutcomeFor re-serves the stored payload under the row's
+		// stamp, and the serving verdicts for the produced artifact read
+		// this row long after the run that packed it.
+		if err := c.store.SetScreenOutput(ctx, taskID); err != nil {
+			c.logger.Warn("stamp screen output on executor row", "task", taskID, "err", err)
+		} else {
+			task.ScreenOutput = true
+		}
 	}
 
 	// The supervisor did not accept the result: either work still remains after
@@ -1795,7 +1834,7 @@ func (c *Core) finalizeRun(ctx context.Context, taskID string, task Task, plan c
 			TaskID: taskID, AttemptID: attemptID, State: StateReview,
 			ApprovalDisposition: string(ApprovalAcceptWork),
 			OK:                  true, ExitCode: res.ExitCode, Stdout: res.Stdout,
-			Tokens: res.Tokens, Cost: res.Cost, OutputArtifact: outputArtifact, FilesChanged: filesChanged, FilesTruncated: filesTruncated, Agent: res.Agent, Model: res.Model, Injected: res.Injected,
+			Tokens: res.Tokens, Cost: res.Cost, OutputArtifact: outputArtifact, ScreenOutput: screenOut, FilesChanged: filesChanged, FilesTruncated: filesTruncated, Agent: res.Agent, Model: res.Model, Injected: res.Injected,
 			AgentSessionID: sessionID,
 		}, nil
 	}
@@ -1837,7 +1876,7 @@ func (c *Core) finalizeRun(ctx context.Context, taskID string, task Task, plan c
 				TaskID: taskID, AttemptID: attemptID, State: StateReview,
 				ApprovalDisposition: string(ApprovalAcceptWork),
 				OK:                  true, ExitCode: res.ExitCode, Stdout: res.Stdout,
-				Tokens: res.Tokens, Cost: res.Cost, OutputArtifact: outputArtifact, FilesChanged: filesChanged, FilesTruncated: filesTruncated, Agent: res.Agent, Model: res.Model, Injected: res.Injected,
+				Tokens: res.Tokens, Cost: res.Cost, OutputArtifact: outputArtifact, ScreenOutput: screenOut, FilesChanged: filesChanged, FilesTruncated: filesTruncated, Agent: res.Agent, Model: res.Model, Injected: res.Injected,
 				AgentSessionID: sessionID,
 			}, nil
 		}
@@ -1864,7 +1903,7 @@ func (c *Core) finalizeRun(ctx context.Context, taskID string, task Task, plan c
 	trackTask(c, task.Project, required, task.Title, true)
 	return bus.TaskResultPayload{
 		TaskID: taskID, AttemptID: attemptID, State: StateDone, OK: true, ExitCode: res.ExitCode, Stdout: res.Stdout,
-		Tokens: res.Tokens, Cost: res.Cost, OutputArtifact: outputArtifact, FilesChanged: filesChanged, FilesTruncated: filesTruncated, Agent: res.Agent, Model: res.Model, Injected: res.Injected,
+		Tokens: res.Tokens, Cost: res.Cost, OutputArtifact: outputArtifact, ScreenOutput: screenOut, FilesChanged: filesChanged, FilesTruncated: filesTruncated, Agent: res.Agent, Model: res.Model, Injected: res.Injected,
 		// Reported even though the local row cleared it: the delegator keeps
 		// the handle so a re-dispatch back here can offer ResumeSessionID.
 		AgentSessionID: sessionID,

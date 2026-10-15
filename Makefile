@@ -284,15 +284,24 @@ install-local: build
 	@# Network identity and the launchd daemon silently loses its grant
 	@# (peer dials die with EHOSTUNREACH). A stable cert identity keeps the
 	@# grant across rebuilds.
-	@tmp=$$(mktemp $(HOME)/.local/bin/.panda.XXXXXX) && cp $(BIN) $$tmp && chmod 755 $$tmp && \
-		(codesign -s "OpenPanda Local Development" --identifier com.openpanda.node --force $$tmp 2>/dev/null || true) && \
-		mv $$tmp $(HOME)/.local/bin/panda
+	@# When the release-prefix install exists (~/.local/share/openpanda/bin),
+	@# the binary goes there and ~/.local/bin/panda stays a SYMLINK to it —
+	@# the same layout install.sh ships. Keeping the PATH entry a real file
+	@# would fork the two copies: `panda update` resolves symlinks and swaps
+	@# only the file it was invoked through, so a real-file PATH entry leaves
+	@# the supervised daemon running the stale image forever.
 	@if [ -d "$(HOME)/.local/share/openpanda/bin" ]; then \
 		tmp=$$(mktemp "$(HOME)/.local/share/openpanda/bin/.panda.XXXXXX") && \
 		cp $(BIN) $$tmp && chmod 755 $$tmp && \
 		(codesign -s "OpenPanda Local Development" --identifier com.openpanda.node --force $$tmp 2>/dev/null || true) && \
 		mv $$tmp "$(HOME)/.local/share/openpanda/bin/panda" && \
-		echo "synced $(HOME)/.local/share/openpanda/bin/panda"; \
+		mkdir -p "$(HOME)/.local/bin" && \
+		ln -sf "$(HOME)/.local/share/openpanda/bin/panda" "$(HOME)/.local/bin/panda" && \
+		echo "installed $(HOME)/.local/share/openpanda/bin/panda (+ ~/.local/bin/panda symlink)"; \
+	else \
+		tmp=$$(mktemp $(HOME)/.local/bin/.panda.XXXXXX) && cp $(BIN) $$tmp && chmod 755 $$tmp && \
+		(codesign -s "OpenPanda Local Development" --identifier com.openpanda.node --force $$tmp 2>/dev/null || true) && \
+		mv $$tmp $(HOME)/.local/bin/panda; \
 	fi
 
 # Measure steady-state RSS: start core, sample after 2s, stop.

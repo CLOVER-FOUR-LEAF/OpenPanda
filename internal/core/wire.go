@@ -561,6 +561,28 @@ func (c *Core) handleResult(ctx context.Context, env bus.Envelope) {
 		c.adoptWorktreeOutput(ctx, t, env.From, p.OutputArtifact)
 	}
 
+	// Display-content mark: a flagged result means this row's output_artifact
+	// (once the adoption paths above record it) holds screen bytes — stamp
+	// the row so the artifact serve path applies the mesh-only rule even for
+	// actuator ids this node cannot classify itself. The flag can only
+	// narrow an audience, so adopting the peer's claim is always safe.
+	if p.ScreenOutput && !t.ScreenOutput {
+		if serr := c.store.SetScreenOutput(ctx, p.TaskID); serr != nil {
+			c.logger.Warn("stamp screen output", "task", p.TaskID, "err", serr)
+		}
+		t.ScreenOutput = true
+		// A verdict cached before the stamp (screen=false) would keep
+		// serving display bytes to a sub-mesh peer for up to the TTL —
+		// retire this task's entries so the next chunk re-derives.
+		prefix := p.TaskID + "|"
+		c.artAuthCache.Range(func(k, _ any) bool {
+			if ks, ok := k.(string); ok && strings.HasPrefix(ks, prefix) {
+				c.artAuthCache.Delete(k)
+			}
+			return true
+		})
+	}
+
 	// The executor reported WHERE it ran; record it on this row too, so the
 	// delegator's queue board answers "where did it run?" for remote work
 	// instead of showing a dash (the row's own exec_work_dir only exists
@@ -881,6 +903,10 @@ func (c *Core) resumeOutcomeFor(ctx context.Context, t Task) bus.TaskResultPaylo
 		// forever after a mid-review reconnect re-push.
 		result.ApprovalDisposition = string(t.ApprovalDisposition)
 	}
+	// The row's own stamp is authoritative: the stored result blob predates
+	// the flag on rows finalized before the column existed, and an empty
+	// blob carries nothing at all.
+	result.ScreenOutput = t.ScreenOutput
 	if result.Stderr == "" && (t.State == StateFailed || t.State == StateExpired) {
 		// A locally-failed row keeps its reason on the audit trail (Fail
 		// writes the EvResult event, not the result column); carry it so

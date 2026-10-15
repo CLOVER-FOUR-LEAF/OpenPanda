@@ -152,14 +152,22 @@ fixed seven issues before they reached a release:
 
 ## Track 2 — scheduling beyond harnesses
 
-- [x] Actuator drivers shipped — `drivers/` carries the five reference
+- [x] Actuator drivers shipped — `drivers/` carries the seven reference
       drivers: `panda-servo` (gpiozero/AngularServo, BCM pin, 0-180°),
       `panda-mic` (arecord→WAV, 1-300 s cap), `panda-camera` (fswebcam /
       imagesnap / ffmpeg fallback chain), `panda-notify` (notify-send /
       osascript / powershell toast), `panda-mcu` (pure-stdlib POSIX termios
       serial/UART for Arduino/ESP32/RP2040/AT modems, `--send`/`--send-hex`
-      with `--expect`/`--expect-regex` read windows). Each exits 3 on a
-      missing backend so `PruneUnavailableActuators` keeps the card honest.
+      with `--expect`/`--expect-regex` read windows), `panda-screen`
+      (screencapture / grim / scrot / powershell capture — computer-use
+      eyes) and `panda-input` (cliclick+osascript / xdotool / ydotool /
+      powershell click·type·key·scroll — computer-use hands, tier 2).
+      Desktop-interface drivers are card-advertised only when a GUI
+      session plausibly exists (`guiSessionLikely`: console owner on
+      macOS, DISPLAY/WAYLAND_DISPLAY on Linux, non-Services session on
+      Windows; `OPENPANDA_GUI_SESSION` overrides for debugging).
+      Each exits 3 on a missing backend so `PruneUnavailableActuators`
+      keeps the card honest.
       `package.sh` ships `drivers/` in every archive (full + lite) and
       `install.distributionEntries` sweeps it on uninstall.
 - [x] action_spec end to end — `TaskSpecDetail.action_spec` rides spec_json

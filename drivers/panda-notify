@@ -10,6 +10,11 @@
 # toast (Windows/git-bash). Text is passed as argv/applescript literals —
 # never interpolated into a shell line beyond the quoting each backend needs.
 #
+# On Windows the capability card resolves the sibling panda-notify.ps1 instead
+# of this script — a stock Windows node has no MSYS shell, and CreateProcess
+# cannot exec a shebang script. This script's Windows branch stays for manual
+# git-bash use.
+#
 # Exit codes: 0 ok · 2 bad arguments · 3 no notification backend · 1 delivery error.
 
 set -eu

@@ -414,6 +414,14 @@ type ArtifactRef struct {
 	// to look up the signing key in the peer directory.
 	Grant  string `json:"grant,omitempty"`
 	Issuer string `json:"issuer,omitempty"`
+	// Screen marks the referenced artifact as display content (the producing
+	// stage drove a screen_sensing actuator). The orchestrator stamps it from
+	// the producer's row so every hop downstream — routing, admission, the
+	// serving verdict on a node that never saw the producer's row — can bind
+	// the bytes to the mesh-only rule. Like the result flag it only narrows
+	// an audience: a forged mark shrinks who may hold the input, it cannot
+	// widen one.
+	Screen bool `json:"screen,omitempty"`
 }
 
 // TitleOrDefault returns the explicit title, falling back to the intent.
@@ -506,6 +514,13 @@ type TaskResultPayload struct {
 	// hands it to the successor stages as their input; the executor stays the
 	// node that holds the bytes until someone pulls them.
 	OutputArtifact string `json:"output_artifact,omitempty"`
+	// ScreenOutput marks the output as display content (the run drove a
+	// screen_sensing actuator). Every hop that adopts the result stamps its
+	// own task row, so artifact_fetch can apply the mesh-only rule even for
+	// operator-defined actuator ids the requires/spec predicates cannot
+	// name. It can only ever make a task MORE restricted on the wire — a
+	// forged flag shrinks an audience, it cannot widen one.
+	ScreenOutput bool `json:"screen_output,omitempty"`
 	// FilesChanged lists the workdir-relative paths the run added, removed or
 	// modified — the result's footprint, so the delegator sees what the task
 	// actually touched rather than trusting the agent's prose. Capped for the

@@ -1,6 +1,6 @@
 # 安装 OpenPanda
 
-三条路径都能在 macOS / Linux / Windows 上得到**一致的体验**：一个 `panda` 可执行文件 + 智能体适配器（`adapters/*.py`），装在用户目录、免 root。
+三条路径都能在 macOS / Linux / Windows 上得到**一致的体验**：一个 `panda` 可执行文件 + 智能体适配器（`adapters/*.py`）+ 参考执行器驱动（`drivers/panda-*`），装在用户目录、免 root。
 
 | 平台      | 方式                         |
 | ------- | -------------------------- |
@@ -19,7 +19,7 @@ curl -fsSL https://raw.githubusercontent.com/Xustalis/OpenPanda/main/scripts/ins
 等效的显式写法：
 
 ```bash
-sh scripts/install.sh --version 0.0.10   # 安装指定版本（如稳定版 0.0.10、历史预发布版 0.0.10-preview；默认 latest，即最新稳定版）
+sh scripts/install.sh --version 0.0.11   # 安装指定版本（如稳定版 0.0.11、历史预发布版 0.0.11-preview；默认 latest，即最新稳定版）
 sh scripts/install.sh --prefix /opt/openpanda  # 自定义安装目录
 sh scripts/install.sh --lite                   # lite 构建：无内嵌 Web 控制台/TUI（仅 Linux）
 sh scripts/install.sh --yes                    # 额外注册开机自启（不询问）
@@ -32,6 +32,7 @@ sh scripts/install.sh --no-service             # 不碰开机自启
 ${XDG_DATA_HOME:-~/.local/share}/openpanda/
 ├── bin/panda            # 真实二进制
 ├── adapters/*.py        # 智能体适配器（daemon 委派任务必需）
+├── drivers/panda-*      # 参考执行器驱动（舵机/麦克风/摄像头/串口/截屏/GUI 输入）
 ├── config.example.yaml
 └── capabilities.example-*.yaml
 ```
@@ -67,7 +68,7 @@ irm https://raw.githubusercontent.com/Xustalis/OpenPanda/main/scripts/install.ps
 或下载后运行：
 
 ```powershell
-powershell -ExecutionPolicy Bypass -File .\install.ps1 -Version 0.0.10 -Yes
+powershell -ExecutionPolicy Bypass -File .\install.ps1 -Version 0.0.11 -Yes
 ```
 
 安装到 `%LOCALAPPDATA%\OpenPanda\`，并把 `bin` 加入**用户 PATH**（持久化）。交互式运行时询问是否注册**登录计划任务**（`schtasks /SC ONLOGON`）在后台跑 `panda daemon`。
@@ -121,7 +122,7 @@ panda doctor    # 自检：二进制 / PATH / 配置 / 适配器 / agent 是否�
 panda uninstall             # 扫描 → 列出删除/保留清单 → 输入 confirm 确认 → 自动备份 → 白名单删除
 ```
 
-- **白名单删除**：只删 OpenPanda 自有产物（二进制、PATH 标记块、config.yaml、数据库与运行数据）；`memory/`、`projects/`、`skills/` 等用户资产默认**保留**并在清单中标注。一键脚本/self-update 安装的发行目录（`bin/`、`adapters/`、示例配置）也会一并清扫——Linux 上与存储同根时只动发行文件、保留数据；Homebrew 安装则提示用 `brew uninstall openpanda`，源码 checkout（有 `go.mod`/`.git`）不会被误删。
+- **白名单删除**：只删 OpenPanda 自有产物（二进制、PATH 标记块、config.yaml、数据库与运行数据）；`memory/`、`projects/`、`skills/` 等用户资产默认**保留**并在清单中标注。一键脚本/self-update 安装的发行目录（`bin/`、`adapters/`、`drivers/`、示例配置）也会一并清扫——Linux 上与存储同根时只动发行文件、保留数据；Homebrew 安装则提示用 `brew uninstall openpanda`，源码 checkout（有 `go.mod`/`.git`）不会被误删。
 
 - **自动备份**：删除前把配置与数据打包成 `~/openpanda-backup-<时间戳>.zip`，可回滚（`--no-backup` 跳过）。
 
@@ -149,7 +150,7 @@ panda uninstall --backup-only
 
 ## 发布一个新版本
 
-1. 变更合入 `main`，确认该 commit 的 **Gate 已经跑绿**，再打标签：`git tag v0.0.10 && git push origin v0.0.10`（注意两点：CHANGELOG 必须先有该版本章节，否则 release 流水线会拒绝发布；release 流水线会向 Gate 查验**同一个 commit** 的结论，没有 push 触发的 Gate 运行记录、或结论不是 success，都会直接拒绝发布并报错）。
+1. 变更合入 `main`，确认该 commit 的 **Gate 已经跑绿**，再打标签：`git tag v0.0.11 && git push origin v0.0.11`（注意两点：CHANGELOG 必须先有该版本章节，否则 release 流水线会拒绝发布；release 流水线会向 Gate 查验**同一个 commit** 的结论，没有 push 触发的 Gate 运行记录、或结论不是 success，都会直接拒绝发布并报错）。
 2. `.github/workflows/release.yml` 自动跨平台构建 → 打包 `.tar.gz`/`.zip` → 生成 `checksums.txt` → 发布 GitHub Release。
 3. 预发布（带连字符的标签，如 `v0.0.9-beta`、`v0.0.8-alpha`、`v1.0.0-rc1`）会自动标记为 **pre-release**：它不会成为仓库的 Latest，`releases/latest` 仍指向最后一个稳定版，一键安装脚本也只装稳定版；同时**不会**同步 Homebrew tap。
 4. 落地后可用：

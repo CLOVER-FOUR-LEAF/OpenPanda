@@ -69,6 +69,7 @@ var migrations = []Migration{
 	{Version: 42, Name: "add_tasks_exec_work_dir", Apply: migrateV42},
 	{Version: 43, Name: "add_employee_trust", Apply: migrateV43},
 	{Version: 44, Name: "add_task_messages", Apply: migrateV44},
+	{Version: 45, Name: "add_tasks_screen_output", Apply: migrateV45},
 }
 
 // migrateV44 adds task_messages: the per-scope message board sibling tasks
@@ -1120,4 +1121,19 @@ func addColumnIfMissingTx(tx MigrationExec, table, col, def string) error {
 	}
 	_, err = tx.Exec(fmt.Sprintf(`ALTER TABLE %s ADD COLUMN %s %s`, table, col, def))
 	return err
+}
+
+// migrateV45 adds tasks.screen_output: the runtime mark an executor stamps
+// when the run resolved a screen_sensing actuator — and that result
+// adoption stamps on every delegator hop — so the artifact transfer gate
+// can recognize display content even for operator-defined actuator ids the
+// static requires/spec predicates cannot name. Peer-written, but only ever
+// making a task MORE restricted — a forged flag can shrink the audience,
+// never widen it.
+func migrateV45(tx MigrationExec) error {
+	exists, err := tableExistsTx(tx, "tasks")
+	if err != nil || !exists {
+		return err
+	}
+	return addColumnIfMissingTx(tx, "tasks", "screen_output", "INTEGER NOT NULL DEFAULT 0")
 }

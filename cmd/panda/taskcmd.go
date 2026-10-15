@@ -64,6 +64,9 @@ func runTask(args []string) {
 		case "board":
 			runTaskBoard(args[1:])
 			return
+		case "artifact":
+			runTaskArtifact(args[1:])
+			return
 		case "logs":
 			runLogs(args[1:])
 			return
@@ -91,6 +94,7 @@ func taskUsage() {
 	fmt.Fprintln(os.Stderr, "  revert <id>                             roll the run's git checkout back to its pre-task baseline")
 	fmt.Fprintln(os.Stderr, "  followup <id>                           hand the task's recorded result to the model and continue")
 	fmt.Fprintln(os.Stderr, "  board <id>                              show the sibling-message boards a task reads")
+	fmt.Fprintln(os.Stderr, "  artifact <id> [--list|--file P|--out D]  fetch the task's output artifact (list, preview, or extract)")
 	fmt.Fprintln(os.Stderr, "  approve|reject|cancel|logs <id>         same as the bare commands")
 }
 

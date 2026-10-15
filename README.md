@@ -43,7 +43,7 @@ The project evolves along two tracks:
 | Track | Description | Status |
 |---|---|---|
 | **Multi-Agent orchestration** | Hire and command multiple terminal agents: dispatch, supervision, failover, approval | ✅ Current focus |
-| **Multi-device collaboration** | Cross-node task routing and scheduling over a P2P mesh | ✅ Shipped in v0.0.10 — LAN discovery, TOFU pinning, delegated worktrees |
+| **Multi-device collaboration** | Cross-node task routing and scheduling over a P2P mesh | ✅ Shipped in v0.0.10; v0.0.11 adds per-session AEAD, Bluetooth-style pairing, trust tiers, multi-hop relays |
 
 ---
 
@@ -75,6 +75,8 @@ The project evolves along two tracks:
 - **Worktree-traveling delegation** — a file task delegated to another node carries its checkout there and brings the result back.
 - **Multi-hop mesh** — hard pins (`--preferred`, stage `node:`) and the context/artifact data plane route over multiple relays on a partial mesh: a node two hops out is addressed through the gossiped link-state, and an executor that cannot reach the origin pulls its snapshot and inputs through the hop that handed it the task.
 - **Actuator dispatch** — tasks can drive physical actuators (servo, mic, camera, notify, serial MCU) on the node that owns the hardware.
+- **Computer-use pair** — a node with a desktop session advertises `hardware:screen_capture` (screenshot the display) and `hardware:gui_input` (click, type, key, scroll — tier 2 because a click cannot be unsent), so the agent on that machine can see and drive its GUI; headless daemons never claim a screen they cannot see. Screen output only travels between mesh-trusted nodes.
+- **Retrievable artifacts** — what a task produces (a screenshot, a report file) is packed and pulled back to you: `panda task artifact <id>` lists and extracts it, and the console previews images and text inline.
 
 ### Sessions & Embedding
 
@@ -145,6 +147,7 @@ To connect a second device: run `panda pair <device-B-address>` on device A and 
 | `panda approve <id>` | Approve a pending Tier-2 task |
 | `panda project list` | Manage workspace projects and context |
 | `panda task board <id>` | Show the sibling-message boards a task reads (plan/parent scope + its children) |
+| `panda task artifact <id>` | List or extract a task's output artifact (`--list`, `--file <path>`, `--out <dir>`) |
 | `panda session` | List, fork, and resume conversation sessions (`session tree` shows the family) |
 | `panda skill` | Browse, import, and install workflow skills (Hub, URL, or file) |
 | `panda auth login` | Sign in a model subscription (e.g. `anthropic`) via OAuth |
@@ -182,8 +185,8 @@ To connect a second device: run `panda pair <device-B-address>` on device A and 
 |---|---|
 | **v0.0.8** (stable baseline) | Single-machine multi-agent orchestration, fully usable: intent classification, dispatch, supervision loop, failover, tiered approval, prompt language policy |
 | **v0.0.9** (stable) — "Periapsis" | Hybrid transport/DTN architecture completed: latency-weighted mesh routing, on-wire DTN bundles, token budgets, shadow copies, actuator path, UDP datagram plane with mesh-coordinated NAT hole punching, encrypted payloads, contact plans, Ed25519 node identity, lite build — plus remembered approvals, execution attribution, a web sidebar node chip and everyday CLI polish |
-| **v0.0.10** (current stable) — "Apoapsis" | Reaching outward to the LAN and the edge: discovery with fingerprint-confirmed admission and TOFU key pinning, worktree-traveling delegated file tasks, the clarification loop, actuator dispatch with five reference drivers (serial MCU included), the Pi adapter and a Python-free generic executor — plus session trees with forking, auto-compaction, the `panda rpc` embedding surface, subscription OAuth, signed event/audit chains, OS-level sandboxing, and a steady-state perf round. Relicensed to AGPL-3.0-or-later with dual commercial licensing |
-| **v0.0.11** (preview) — "Rendezvous" | Tightening the mesh itself: negotiated per-session AEAD encryption inside the signed hello, Bluetooth-style `panda pair`, signed discovery beacons and stable `k:<pub>` identities, hard node pins that hold their destination across multi-hop routes, outbox custody that re-delivers verdicts across link flaps, daemon-authority arbitration, a 240 s silence watchdog, negotiated binary data frames — and a partial-mesh data plane that relays context and artifacts along the delegation chain |
+| **v0.0.10** — "Apoapsis" | Reaching outward to the LAN and the edge: discovery with fingerprint-confirmed admission and TOFU key pinning, worktree-traveling delegated file tasks, the clarification loop, actuator dispatch with five reference drivers (serial MCU included), the Pi adapter and a Python-free generic executor — plus session trees with forking, auto-compaction, the `panda rpc` embedding surface, subscription OAuth, signed event/audit chains, OS-level sandboxing, and a steady-state perf round. Relicensed to AGPL-3.0-or-later with dual commercial licensing |
+| **v0.0.11** (current stable) — "Rendezvous" | Tightening the mesh itself: negotiated per-session AEAD encryption inside the signed hello, Bluetooth-style `panda pair`, signed discovery beacons and stable `k:<pub>` identities, hard node pins that hold their destination across multi-hop routes, outbox custody that re-delivers verdicts across link flaps, daemon-authority arbitration, a 240 s silence watchdog, negotiated binary data frames — and a partial-mesh data plane that relays context and artifacts along the delegation chain. It also ships the computer-use pair (`hardware:screen_capture`, `hardware:gui_input`; POSIX and Windows `.ps1` drivers, advertised only under a real GUI session), retrievable task artifacts (`panda task artifact`, console preview), and a mesh-only trust rule for display content that follows the bytes through sends, pulls and stage-to-stage input handoffs |
 | **v0.0.x (beyond)** | Stability, performance, and edge-case tuning |
 | **v0.1.0** | Desktop capabilities and stronger control & management — commercial-grade quality |
 

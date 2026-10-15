@@ -43,7 +43,7 @@ OpenPanda 将终端 AI 编程助手（Claude Code、OpenAI Codex、Grok Build、
 | 主线               | 说明                              | 状态                        |
 | ---------------- | ------------------------------- | ------------------------- |
 | **多 Agent 协同控制** | 雇佣并统一指挥多个终端 Agent：派发、监督、故障转移、审批 | ✅ 当前工作重点                  |
-| **多设备协同控制**      | P2P 网络内跨节点任务路由与调度               | ✅ v0.0.10 已发布：LAN 自动发现、TOFU 密钥钉住、工作树随委派同行 |
+| **多设备协同控制**      | P2P 网络内跨节点任务路由与调度               | ✅ v0.0.10 已发布；v0.0.11 追加逐连接 AEAD、蓝牙式配对、信任分档与多跳中继 |
 
 ***
 
@@ -88,6 +88,8 @@ OpenPanda 将终端 AI 编程助手（Claude Code、OpenAI Codex、Grok Build、
 - **多跳 mesh** —— 硬钉选（`--preferred`、阶段 `node:`）与 context/artifact 数据面在部分网状拓扑上跨中继路由：两跳外的节点沿 gossip 链路状态寻址，够不到源节点的执行者经交付它的那一跳逐段上溯拉取快照与输入。
 
 - **Actuator 派发** —— 任务可驱动持有硬件的节点上的物理执行器（舵机、麦克风、摄像头、通知、串口 MCU）。
+- **Computer-use 组合** —— 有桌面会话的节点会广告 `hardware:screen_capture`（截屏）与 `hardware:gui_input`（点击、输入、按键、滚动——点击不可撤销故为 tier 2），该机器上的 agent 由此看见并操作自己的 GUI；无头守护进程不虚报看不见的屏幕。屏幕内容只在 mesh 信任档节点之间流动。
+- **产物可取回** —— 任务产出的东西（截图、报告文件）会被打包拉回：`panda task artifact <id>` 列清单并解出，控制台可内联预览图片与文本。
 
 ### 会话与嵌入
 
@@ -166,6 +168,8 @@ panda ask "查看系统状态并总结待办任务"  # 直接发一条指令
 | `panda queue`        | 查看排队中、执行中或待审批的任务（`--watch` 实时刷新） |
 | `panda approve <id>` | 审批放行二级高危操作                       |
 | `panda project list` | 管理工作空间项目与工程记忆                    |
+| `panda task board <id>` | 查看任务可读的兄弟消息板（plan/父作用域及其子任务）  |
+| `panda task artifact <id>` | 列出或解出任务的输出工件（`--list`、`--file <路径>`、`--out <目录>`） |
 | `panda session`      | 列出、分叉并恢复会话（`session tree` 查看家族树）       |
 | `panda skill`        | 浏览、导入并安装工作流技能（技能中心/URL/文件）        |
 | `panda auth login`   | 通过 OAuth 登录模型订阅（如 `anthropic`）       |
@@ -203,8 +207,8 @@ panda ask "查看系统状态并总结待办任务"  # 直接发一条指令
 | ---------------- | ----------------------------------------- |
 | **v0.0.8**（稳定基线） | 单机多 Agent 协同完整可用：意图分类、任务派发、监督循环、故障转移、分级审批、多语言提示词策略 |
 | **v0.0.9**（稳定版）— "Periapsis" | 混合传输/DTN 架构完成：延迟加权 mesh 路由、DTN bundle 上线、令牌预算、影子副本、执行器通路、UDP 数据报平面与经 mesh 协调的 NAT 打洞、DTN 载荷加密、接触计划、Ed25519 节点身份、lite 构建——以及可记忆的审批、执行归属标注、Web 侧栏节点徽标与日常 CLI 打磨 |
-| **v0.0.10**（当前稳定版）— "Apoapsis" | 伸向局域网与边缘硬件：指纹确认准入的 LAN 自动发现与 TOFU 密钥钉住、工作树随委派文件任务同行、澄清回路、带五个参考驱动（含串口 MCU）的 actuator 派发、Pi adapter 与免 Python 的内建 generic 执行器——以及可分叉的会话树、自动压缩、`panda rpc` 嵌入面、订阅 OAuth、签名事件/审计链、OS 级沙箱与一轮稳态性能优化。许可证迁移至 AGPL-3.0-or-later 并引入商业双授权 |
-| **v0.0.11**（预览版）— "Rendezvous" | 收紧 mesh 本身：签名 hello 内协商的逐连接 AEAD 加密、蓝牙式 `panda pair`、签名发现 beacon 与稳定的 `k:<pub>` 身份、跨多跳路由不丢目的地身份的硬节点钉住、跨断链重投裁决的 outbox 托管、daemon 权威仲裁、240 秒静默看门狗、协商二进制数据帧——以及沿委派链逐跳中继 context 与产物的部分网状数据面 |
+| **v0.0.10** — "Apoapsis" | 伸向局域网与边缘硬件：指纹确认准入的 LAN 自动发现与 TOFU 密钥钉住、工作树随委派文件任务同行、澄清回路、带五个参考驱动（含串口 MCU）的 actuator 派发、Pi adapter 与免 Python 的内建 generic 执行器——以及可分叉的会话树、自动压缩、`panda rpc` 嵌入面、订阅 OAuth、签名事件/审计链、OS 级沙箱与一轮稳态性能优化。许可证迁移至 AGPL-3.0-or-later 并引入商业双授权 |
+| **v0.0.11**（当前稳定版）— "Rendezvous" | 收紧 mesh 本身：签名 hello 内协商的逐连接 AEAD 加密、蓝牙式 `panda pair`、签名发现 beacon 与稳定的 `k:<pub>` 身份、跨多跳路由不丢目的地身份的硬节点钉住、跨断链重投裁决的 outbox 托管、daemon 权威仲裁、240 秒静默看门狗、协商二进制数据帧——以及沿委派链逐跳中继 context 与产物的部分网状数据面。本版同时带来 computer-use 眼手对（`hardware:screen_capture`/`hardware:gui_input`，POSIX 与 Windows `.ps1` 驱动齐备，只在确有 GUI 会话时广告）、可取回的任务产物（`panda task artifact`、控制台内联预览），以及显示内容的 mesh 独占信任规则——随字节贯穿发送、拉取与阶段间输入交接 |
 | **v0.0.x（后续）**   | 稳定性、性能与边缘场景调优                             |
 | **v0.1.0**       | 桌面端（Desktop）能力与更强的操控管理能力，达到可商用化标准         |
 

@@ -38,6 +38,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/Xustalis/OpenPanda/internal/artifact"
 	"github.com/Xustalis/OpenPanda/internal/askengine"
 	"github.com/Xustalis/OpenPanda/internal/carddetect"
 	"github.com/Xustalis/OpenPanda/internal/config"
@@ -2568,8 +2569,11 @@ func (r *repl) cmdWeb(arg string) {
 	updateMgr.StartAutoCheck(context.Background(), 0)
 
 	handler := panel.New(panel.Deps{
-		Store:  r.store,
-		Engine: r.engine.Load(),
+		Store: r.store,
+		// The REPL shares the daemon's pool path, so a task artifact lands
+		// visible here whether this process or the daemon produced it.
+		Artifacts: artifact.NewStore(r.cfg.Storage.ArtifactPath, r.cfg.Storage.ArtifactExtraPaths...),
+		Engine:    r.engine.Load(),
 		// EngineFn resolves the engine live on every request: the panel is
 		// long-lived, while a TUI wizard or /model add may build the engine
 		// after /web already started serving — a static nil snapshot would

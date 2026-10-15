@@ -40,6 +40,27 @@ OpenPanda（**Open** **P**ersonal **A**daptive **N**ode-based **D**istributed **
 
 ## [Unreleased]
 
+## [0.0.11] - 2026-10-15 — "Rendezvous"
+
+稳定版 v0.0.11——代号 **Rendezvous**（轨道交会）。本版将预览线的全部内容收拢——签名 hello 内协商的逐连接 AEAD、蓝牙式配对、签名发现 beacon 与稳定的 `k:<pub>` 身份、跨多跳路由不丢目的地身份的硬节点钉住、部分网状数据面、任务间消息板、以及 agent 工作的 git 回滚——再加上本周期的新增：桌面节点长出了 computer-use 的眼与手（截屏与合成输入成为一等执行器，POSIX 与原生 Windows 通吃）、任务产出可以打包成 artifact 从 CLI 与控制台取回、显示内容端到端走自己专属的 mesh-only 信任规则——跨委派、推送、拉取，以及屏幕阶段的输出作为下一阶段输入被消费的全程。
+
+### 新增
+
+- **Computer-use 的「眼」与「手」** —— 两个新的参考执行器让带桌面的节点可以承担 GUI 工作：`drivers/panda-screen` 截屏（macOS `screencapture`、Linux grim/scrot/ImageMagick、Windows PowerShell），广告为 `hardware:screen_capture`；`drivers/panda-input` 合成输入（cliclick+osascript / xdotool / ydotool / PowerShell——move、click、dblclick、type、key、scroll、pos），广告为 `hardware:gui_input`，因点击与按键不可逆而归为 tier 2。`DetectActuators` 自动探测 bundled `drivers/` 目录（`OPENPANDA_DRIVERS_DIR` 独占覆盖，其后 PATH，再其后随发行包附带的布局），`panda install` 与发行包均随带驱动；声明 `Interface:"desktop"` 的执行器只在疑似存在 GUI 会话时才被广告——macOS 查 console 属主、Linux 查 `DISPLAY`/`WAYLAND_DISPLAY`、Windows 排除 Services 会话，`OPENPANDA_GUI_SESSION` 可覆盖——无头守护进程不会再虚报一块它看不见的屏幕。路由提示词已教会「截屏 → 理解 → 动作」的链路。
+- **任务产物可取回** —— 裸任务的私有工作目录现在会打包并登记为输出工件（执行器截屏、agent 报告文件不再烂在 `work_path` 下；空目录不产空包，固定/项目目录永不被整包）。取回面：`panda task artifact <id> [--list|--file <路径>|--out <目录>]`、面板三个认证端点（`GET /api/tasks/{id}/artifact`、`/artifact/files`、`/artifact/file?path=`）、控制台 ArtifactSection 列清单 + 图片/文本内联预览 + 单文件或整包下载。`artifact.Store` 新增 `Entries`/`OpenEntry`——不解包列清单、带路径穿越校验的单文件流式读。
+- **[实验性] 截屏任务 mesh 独占** —— 显示内容获得独立的信任位而非沿用普通参与者校验：`requires`/`action_spec` 命中 `hardware:screen_capture`（含 `hardware:*` 等可解析到它的宽令牌）即标记任务；guarded 对端在发送侧被过滤，非 mesh 来源在准入即拒（`trust_policy_refused`），产物服务侧只把屏幕输出放给 mesh 对端——参与关系与签名 grant 都不能放宽。运维自定义的 `screen_sensing` 类目执行器 id 只有生产者本机卡片能归类，因此执行端在认领时写入持久化 `screen_output` 标记（迁移 v45），随 `task_result` 逐跳补标；授权判定缓存记住 screen 位并在每次命中时复检对端档位——信任降级即时切断传输。屏幕阶段的输出作为下一阶段的输入被交接时，绑定同样成立：协调方在 input ref 上打下溯源标记，凡消费显示字节的任务自身即被判定为 display-bound——它的工作树、进而它产出的 artifact 都可能嵌有像素——标记沿阶段逐级级联。`network.trust.send.guarded.screen: true` 是同一所有者场景的显式开关。
+- **Windows computer-use 入口** —— `drivers/panda-screen.ps1`、`drivers/panda-input.ps1`、`drivers/panda-notify.ps1` 让「眼/手/通知」三个驱动在原生 Windows 节点上直接可用——与 POSIX 同族脚本同一套 CLI、同一套退出码，不再依赖 git-bash。探测会把它们解析成 `pwsh -File <脚本>`（优先 pwsh，回退系统内置 PowerShell 5.1）；`-File` 把每个参数按字面字符串交给脚本，action_spec 里的文本始终只是文本；`.cmd`/`.bat` 包装刻意不自动解析——cmd.exe 按自己的规则解析命令行，带 `&`、`%` 或引号的参数可能被拆成第二条命令（golang/go#27199）。
+
+### 修复
+
+- **签名更新通道补齐最后缺口** —— 官方 Ed25519 发布公钥编译内置为 `ReleasePubKey` 默认值，任何构建开箱即验 `checksums.txt.sig`，不再因无内置公钥的开发构建 fail-closed；`OPENPANDA_UPDATE_UNSIGNED` 是自托管无签名通道的显式逃生口；`install-local` 让 `~/.local/bin/panda` 保持指向发行前缀目录的符号链接，`panda update` 换的就是受监督 daemon 实际运行的镜像。
+- **`panda-input` 的 BSD sed** —— 键名首字母大写此前用了 GNU 专属 `sed` 转义，在 macOS 上会把 `key up` 错改成 `uup`；已改为显式大小写分支。
+- **Windows 节点此前无法广告任何随包驱动** —— 探测只认无扩展名的 POSIX 脚本：Windows 上 os.Stat 从不报告执行位，LookPath 也无法匹配没有扩展名的文件，于是带桌面的 Windows 节点一个 `hardware:*` 执行器都不广告，computer-use 眼手对实际上只存在于 macOS/Linux。解析改为按平台取文件名（Windows `.ps1`/`.exe`，unix 裸脚本），卡片上携带的是调用方式而非裸路径，`PruneUnavailableActuators` 保留的恰好是本机真正能跑的部分。
+- **装在 PATH 之外的 agent CLI 在 Windows 上也能被找到** —— `InstalledBinary` 的兜底目录全是 Homebrew/usr-local 这类 unix 路径，且可执行性检查要求 unix 执行位（Windows 上永远不置位），整段兜底在 Windows 上是死代码；目录与检查现已按平台区分（`%APPDATA%\npm`、winget Links、scoop shims、cargo）。
+- **`panda-input key tab` / `key F5`** —— 文档列出的具名按键在进入后端表之前被统一小写，而后端表按大小写精确匹配：Tab 与 F 键在 macOS 上以 "unknown key" 报错，在 Windows 分支则被当作字面字母逐字输入；现在两个后端都补全了规范名。
+- **`panda metrics --runtime` 在 Windows 上报出守护进程负载** —— 此前该行只有存活性（没有 `ps`）；RSS 现取自 GetProcessMemoryInfo，CPU/运行时长取自 GetProcessTimes，CPU 以累计消耗时间呈现（"cpu=4.2s"），而不是单次采样给不出的瞬时百分比。
+- **裸 `panda --help` 补列新任务动词** —— 顶层 usage 从未提到 `task artifact` 与 `task board`（`task` 子帮助、shell 补全与 README 均有），仅看 `--help` 的用户发现不了产物取回入口。
+
 ## [0.0.11-preview] - 2026-10-14
 
 v0.0.11 预览版 —— 代号 **Rendezvous**（轨道会合）。本版把整条线合并为一个预览版：对等链路在签名 hello 内协商逐连接 AEAD 加密；设备加入节点网络就像蓝牙配对——选中设备、核对配对码、两端确认——不再手工复制密钥；任务沿 gossip 拓扑钉到两跳之外的节点，context 与产物逐跳中继；同一 plan 的兄弟阶段现在能在有界消息板上互传短消息，而不必等终态结果。真实 checkout 上的 agent 工作可撤销——`panda task revert` 恢复任务前的 git 基线。信任层级收紧不可信对端可携带的内容，任务生命周期的每个阶段如实报告状态。本预览版在真实三设备舰队（macOS ↔ Windows ↔ Linux SBC）上端到端验证过，包括执行中杀节点、断线重连与消息重放。（alpha/beta 线曾用名 *Periapsis*，因该名已属 v0.0.9 而退役。）

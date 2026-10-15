@@ -229,6 +229,19 @@ hello 校验失败时服务端回 `hello_reject`（`reason`：`auth` 签名/密�
   `pointer`（快照只在审计拉的 `context_fetch` 里出网）、`project_pack`/
   `inputs`/同意签名一律剥离；会因钳制失去必备输入的任务改走重路由而非
   降级送达。`open` 档对端不发也不收推送态委派（offer/bid 市场未建）。
+  **截屏任务是一等敏感类别**：`requires`/`action_spec` 命中
+  `hardware:screen_capture`（含 `hardware`/`hardware:*` 这类可解析到它的
+  宽令牌）的任务只在 mesh 链上移动——非 mesh 来源在准入即拒（
+  `trust_policy_refused`），发送侧钳制直接拒绝而非降级，其输出工件在
+  artifact_fetch/push 服务侧同样只放给 mesh 对端（参与关系与签名 grant
+  都不足以放松这一条）；`screen: true` 是同一所有者场景的显式开关。
+  运维自定义的 `screen_sensing` 类目 actuator id 静态谓词认不出——
+  由执行端认领时的 `screen_output` 运行时打标接力（随 `task_result`
+  逐跳补标，见 `task_result` 节）。屏幕阶段的产物作为下游输入交接
+  时绑定同样成立：`ArtifactRef.screen` 由编排者从生产者行的标记打
+  上，路由（Needs.Screen）、准入与服务判定三面读取——凡消费显示
+  字节的任务自身即为 display-bound（其工作树与产出都可能嵌有像素），
+  标记沿阶段逐级级联；伪造的标记只能收窄受众，与结果标志同向安全。
 
 ### `task_accept` / `task_decline`
 
@@ -252,7 +265,10 @@ hello 校验失败时服务端回 `hello_reject`（`reason`：`auth` 签名/密�
 收执而非执行：审批已停车进 outbox，等链路恢复再送——界面应显示「排队待送」
 而非失败退出码）/ `ok` / `exit_code` / `stdout` / `stderr` / `artifacts` /
 `tokens` / `cost` / `output_artifact`（该阶段打包产物的哈希，编排者记下来
-交给后继阶段作输入）/ `files_changed`（工作树相对路径清单，上限 200，
+交给后继阶段作输入）/ `screen_output`（结果为 true 时该任务的输出工件
+被标记为显示内容——执行端在认领时解析到 `screen_sensing` 类 actuator 即
+打标，每个收到结果的委派跳都给自己的任务行补标；单向收紧语义：伪造的
+true 只会收窄受众，伪造不出放宽）/ `files_changed`（工作树相对路径清单，上限 200，
 让委派方看到任务实际动了什么而非只信 agent 叙述）/ `question`（agent 挂起
 的澄清问题，随 review 态带给源端，`task_resume.answer` 回答）/ `executor` /
 `agent` / `model` / `work_dir` / `duration_ms` / `session_id` /
@@ -291,6 +307,12 @@ hello 校验失败时服务端回 `hello_reject`（`reason`：`auth` 签名/密�
 - `artifact_chunk`：`offset` / `data`（base64）/ `total`（全档大小，供进度并拒绝
   中途变长的流）/ `eof`（最后一段；收齐后按 `hash` 校验才允许入池）/ `ok` /
   `reason`（对端不持有或拒供时 `ok = false`，请求方改问别的节点而非无限重试）。
+
+服务侧授权（`artifactTransferAuthorized`）在参与校验之上叠加一条显示内容
+规则：被标记 `screen_output` 的任务产出的工件只放给 mesh 档对端——参与
+关系、上游身份、签名 grant 都不能放宽；授权判定缓存（1 min TTL）记住
+screen 标记并在每次命中时复检对端档位，信任降级即时切断传输而不是等到
+TTL 期满。同一规则约束 `artifact_push` 的收方。
 
 ### 工件推送：`artifact_push` 三帧
 拉取的镜像：**主动推**，给 DTN/断连场景用——对方未必能发起 `artifact_fetch`。

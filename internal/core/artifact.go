@@ -10,11 +10,14 @@ import (
 	"fmt"
 	"io"
 	"slices"
+	"strings"
 	"sync"
 	"time"
 
 	"github.com/Xustalis/OpenPanda/internal/artifact"
 	"github.com/Xustalis/OpenPanda/internal/bus"
+	"github.com/Xustalis/OpenPanda/internal/ledger"
+	"github.com/Xustalis/OpenPanda/internal/trust"
 )
 
 // Artifact transfer is the data plane the delegation chain was missing. Until it
@@ -778,6 +781,15 @@ func (c *Core) sweepArtServe() {
 // detail, not a policy hole (see artAuthCache).
 const artAuthTTL = time.Minute
 
+// artAuthVerdict is one cached authorization answer. The peer/task/hash
+// binding is immutable over the TTL, but a screen-bound artifact re-checks
+// the peer's tier at every hit: trust demotion must cut a screen transfer
+// mid-flight, not "for up to a minute more".
+type artAuthVerdict struct {
+	until  time.Time
+	screen bool
+}
+
 // artifactTransferAuthorized answers the question every artifact frame asks:
 // may `from` move `hash` under `taskID` on this node? It is the cached form
 // of the peer-participant check plus — for fetches carrying a signed
@@ -787,8 +799,13 @@ const artAuthTTL = time.Minute
 func (c *Core) artifactTransferAuthorized(ctx context.Context, taskID, hash, from string, grant *bus.ArtifactFetchPayload) bool {
 	key := taskID + "|" + hash + "|" + from
 	if v, ok := c.artAuthCache.Load(key); ok {
-		if until, ok := v.(time.Time); ok && time.Now().Before(until) {
-			return true
+		if vv, ok := v.(artAuthVerdict); ok && time.Now().Before(vv.until) {
+			if !vv.screen || c.peerTrustOf(ctx, from) == trust.Mesh {
+				return true
+			}
+			c.logger.Warn("screen output fetch refused on cached verdict — peer tier demoted",
+				"task", taskID, "hash", hash, "peer", from)
+			return false
 		}
 		c.artAuthCache.Delete(key)
 	}
@@ -796,10 +813,147 @@ func (c *Core) artifactTransferAuthorized(ctx context.Context, taskID, hash, fro
 	if !ok && grant != nil && grant.OfTask != "" && grant.Grant != "" && grant.Issuer != "" {
 		ok = c.artifactGrantAuthorized(ctx, *grant)
 	}
-	if ok {
-		c.artAuthCache.Store(key, time.Now().Add(artAuthTTL))
+	if !ok {
+		return false
 	}
-	return ok
+	screen := c.screenBoundToTask(ctx, taskID, hash, grant)
+	c.artAuthCache.Store(key, artAuthVerdict{until: time.Now().Add(artAuthTTL), screen: screen})
+	if screen && c.peerTrustOf(ctx, from) != trust.Mesh {
+		// Screen content is mesh-only: participation and even a signed
+		// grant authorize the task's ordinary outputs, not its display
+		// pixels.
+		c.logger.Warn("artifact transfer refused: screen output for non-mesh peer",
+			"task", taskID, "hash", hash, "peer", from)
+		return false
+	}
+	return true
+}
+
+// screenBoundToTask reports whether (taskID, hash) names a screen-sensitive
+// OUTPUT artifact: the hash binds to the task as its produced tree (the
+// output_artifact column, or an index row that is none of the declared
+// inputs/context — what remains after ruling inputs out can only be output)
+// and the task itself is screen-sensitive. The task row is consulted under
+// both ids a transfer can name: taskID is the consumer's task — resolvable
+// here when this node shared it — and grant.OfTask is the producing task
+// the signed-grant path exists for.
+func (c *Core) screenBoundToTask(ctx context.Context, taskID, hash string, grant *bus.ArtifactFetchPayload) bool {
+	if t, err := c.store.Get(ctx, taskID); err == nil && c.outputHashIsScreen(ctx, t, hash) {
+		return true
+	}
+	if grant != nil && grant.OfTask != "" && grant.OfTask != taskID {
+		if t, err := c.store.Get(ctx, grant.OfTask); err == nil && c.outputHashIsScreen(ctx, t, hash) {
+			return true
+		}
+	}
+	return false
+}
+
+// outputHashIsScreen decides the (task,hash) screen verdict on one row:
+// either the hash is a declared input carrying the delegator's screen mark
+// (display content wherever it moves — this row can rule on the bytes even
+// though it never produced them), or the task is itself screen-sensitive
+// AND the hash is its produced output rather than ordinary input material.
+func (c *Core) outputHashIsScreen(ctx context.Context, t Task, hash string) bool {
+	if hash == "" {
+		return false
+	}
+	if t.OutputArtifact == hash {
+		return c.taskScreenSensitive(t)
+	}
+	if t.ContextHash == hash {
+		return false // the context snapshot is input-side, not screen content
+	}
+	for _, in := range t.Inputs {
+		if in.Hash == hash {
+			return in.Screen
+		}
+	}
+	if !c.taskScreenSensitive(t) {
+		return false
+	}
+	// Indexed under the task but none of its declared inputs/context — the
+	// index row is how a pull or pack bound the produced tree when the
+	// output_artifact column had not propagated yet.
+	indexed, err := c.store.ArtifactIndexedFor(ctx, hash, t.TaskID)
+	return err == nil && indexed
+}
+
+// taskScreenSensitive reports whether the task's working tree is display
+// content. Four signals, in order of how portable the evidence is:
+//   - the persisted screen_output mark — the executor's runtime stamp
+//     (authoritative for operator-defined actuator ids) plus every
+//     delegator's re-stamp from a flagged task_result;
+//   - a requires token or action_spec target naming the canonical actuator
+//     (or a broad token that could resolve to it);
+//   - a declared input ref carrying the orchestrator's screen mark — a
+//     task fed display bytes can embed them in its produced tree, so the
+//     output inherits the mesh-only rule;
+//   - a screen_sensing actuator on THIS node's card matching a requires
+//     token or the action_spec's target — the producer's own row can
+//     classify its custom ids even if the stamp path was skipped (a
+//     pre-flag executor, a direct run, a failed stamp write).
+func (c *Core) taskScreenSensitive(t Task) bool {
+	if t.ScreenOutput {
+		return true
+	}
+	if trust.ScreenSensitiveSpec(t.Requires, t.SpecJSON) {
+		return true
+	}
+	if trust.InputsScreen(t.Inputs) {
+		return true
+	}
+	return c.screenActuatorMatch(c.Card().Actuators, t.Requires, specTargetActuator(t.SpecJSON))
+}
+
+// specTargetActuator extracts action_spec.target_actuator from a task spec
+// blob; "" when absent or unparseable (ScreenSensitiveSpec treats the same
+// malformed input as non-screen, symmetric fail-open).
+func specTargetActuator(specJSON string) string {
+	if strings.TrimSpace(specJSON) == "" {
+		return ""
+	}
+	var holder struct {
+		ActionSpec *ledger.ActionSpec `json:"action_spec"`
+	}
+	if err := json.Unmarshal([]byte(specJSON), &holder); err != nil || holder.ActionSpec == nil {
+		return ""
+	}
+	return holder.ActionSpec.TargetActuator
+}
+
+// screenActuatorMatch reports whether any requirement — or the action_spec's
+// concrete target — resolves to an actuator categorised screen_sensing on
+// the given card. Requires tokens use pattern semantics (hardware:* reaches
+// every actuator); the spec target is an exact id.
+func (c *Core) screenActuatorMatch(acts []ledger.ActuatorProfile, requires []string, target string) bool {
+	for _, act := range acts {
+		if act.Category != "screen_sensing" {
+			continue
+		}
+		if target != "" && act.ID == target {
+			return true
+		}
+		for _, r := range requires {
+			if ledger.AbilityMatches(act.ID, r) {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+// actuatorIsScreen reports whether this node's card categorises the resolved
+// actuator as screen sensing — the executor-side stamp check. An id absent
+// from the card falls back to the canonical predicate: the wire contract
+// knows hardware:screen_capture regardless of what a stale card declares.
+func (c *Core) actuatorIsScreen(actuatorID string) bool {
+	for _, act := range c.Card().Actuators {
+		if act.ID == actuatorID {
+			return act.Category == "screen_sensing"
+		}
+	}
+	return ledger.ScreenSensitiveAbility(actuatorID)
 }
 
 // sweepArtAuth drops expired verdicts so the cache is bounded by live
@@ -809,7 +963,7 @@ func (c *Core) artifactTransferAuthorized(ctx context.Context, taskID, hash, fro
 func (c *Core) sweepArtAuth() {
 	now := time.Now()
 	c.artAuthCache.Range(func(k, v any) bool {
-		if until, ok := v.(time.Time); ok && now.After(until) {
+		if vv, ok := v.(artAuthVerdict); ok && now.After(vv.until) {
 			c.artAuthCache.Delete(k)
 		}
 		return true

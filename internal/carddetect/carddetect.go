@@ -10,10 +10,13 @@ import (
 	"os/exec"
 	"path/filepath"
 	"runtime"
+	"strconv"
+	"strings"
 	"time"
 
 	"github.com/Xustalis/OpenPanda/internal/agents"
 	"github.com/Xustalis/OpenPanda/internal/hwinfo"
+	"github.com/Xustalis/OpenPanda/internal/install"
 	"github.com/Xustalis/OpenPanda/internal/ledger"
 	"gopkg.in/yaml.v3"
 )
@@ -58,6 +61,12 @@ func DetectCard() ledger.Card {
 	// Agents: probe every known agent CLI from the registry (internal/agents)
 	// and prewire the ones present.
 	card.Agents = CardAgents()
+	// Actuators: declare the bundled reference drivers that exist — the
+	// shipped drivers/ dir does nothing on its own until the card advertises
+	// it. Command is the resolved invocation (the driver itself on unix, a
+	// PowerShell host on Windows), so PruneUnavailableActuators cannot drop
+	// what this just found.
+	card.Actuators = DetectActuators()
 	return card
 }
 
@@ -127,13 +136,12 @@ var defaultNativeProbes = []NativeProbe{
 		Tier:        1,
 		Description: "nodejs runtime",
 	},
-	{
-		ID:          "media:screencapture",
-		Command:     "screencapture",
-		Args:        []string{"-x", "/tmp/screencap.png"},
-		Tier:        1,
-		Description: "screen capture utility",
-	},
+	// Screen capture is deliberately NOT a native probe: a fixed-argv one-shot
+	// ("screencapture -x /tmp/screencap.png") writes one shared path — tasks
+	// collide, the file is world-readable, and there is no Linux/Windows
+	// equivalent. The routed form lives on DetectActuators'
+	// hardware:screen_capture (panda-screen driver): unique output per task
+	// work dir, cross-platform, advertised to peers.
 }
 
 // DetectNative probes common command-line utilities present on the host
@@ -151,6 +159,150 @@ func DetectNative() []ledger.NativeAbility {
 			})
 		}
 	}
+	return out
+}
+
+// driversDirEnv lets an operator point the driver probe at a nonstandard
+// drivers/ root (tests use the same seam).
+const driversDirEnv = "OPENPANDA_DRIVERS_DIR"
+
+// resolveDriver finds one reference actuator driver (drivers/panda-*): the
+// env override first — an operator who sets OPENPANDA_DRIVERS_DIR means
+// "drivers live here", so it is the only directory consulted (tests rely on
+// the same exclusivity for isolation) — then PATH (operator-installed
+// copies win), then the shipped drivers/ tree: repo checkout, the packaged
+// layout beside the executable, the dirs install copies into. Returns the
+// resolved command: the bare name when PATH resolves it, the platform's
+// driver file otherwise (the bare script on unix, drivers/panda-*.ps1 on
+// Windows — see driverFileNames); "" when absent. Both forms survive
+// PruneUnavailableActuators: they resolve through exec.LookPath at exec
+// time, the .ps1 through the PowerShell host driverInvocation names.
+func resolveDriver(name string) string {
+	if d := strings.TrimSpace(os.Getenv(driversDirEnv)); d != "" {
+		return findDriverFile(d, name)
+	}
+	if _, err := exec.LookPath(name); err == nil {
+		return name
+	}
+	if d := install.BundledDir("drivers"); d != "" {
+		return findDriverFile(d, name)
+	}
+	return ""
+}
+
+// findDriverFile returns the first runnable file for driver `name` in dir,
+// trying the platform's file names in preference order (driverFileNames).
+// The result is absolute: the card's command is exec'd with the task's work
+// dir as cwd, so a relative OPENPANDA_DRIVERS_DIR would otherwise resolve
+// against the wrong directory at run time.
+func findDriverFile(dir, name string) string {
+	for _, file := range driverFileNames(name) {
+		cand := filepath.Join(dir, file)
+		if executableFile(cand) {
+			if abs, err := filepath.Abs(cand); err == nil {
+				return abs
+			}
+			return cand
+		}
+	}
+	return ""
+}
+
+// DetectActuators declares actuators for the bundled reference drivers that
+// exist — the shipped drivers/ dir is dead weight until the card advertises
+// it. camera/mic/notify sense or signal; screen_capture + gui_input are the
+// computer-use pair (eyes and hands): capture the screen, reason over it in
+// an agent task, click/type back. servo/mcu are deliberately absent — they
+// need wiring knowledge (pin, port) a probe cannot guess, so they stay
+// manual declarations.
+//
+// gui_input is tier 2 on purpose: a click or keystroke cannot be undone —
+// input synthesis is irreversible work and asks for consent like any other
+// irreversible command. screen_capture stays tier 1 (reading the screen
+// changes nothing) with the caveat a desktop screenshot can carry secrets —
+// same exposure class as reading files, which is tier 1 too.
+//
+// Desktop-interface actuators additionally require guiSessionLikely: a card
+// must not advertise eyes and hands on a node where no desktop session can
+// exist (a headless server, or panda running as a system-domain daemon),
+// because peers would route GUI work here and every run would fail.
+func DetectActuators() []ledger.ActuatorProfile {
+	var out []ledger.ActuatorProfile
+	desktop := guiSessionLikely()
+	add := func(name string, act ledger.ActuatorProfile) {
+		if act.Interface == "desktop" && !desktop {
+			return
+		}
+		path := resolveDriver(name)
+		if path == "" {
+			return
+		}
+		// The card carries an invocation, not a bare file path: on Windows a
+		// shipped .ps1 resolves to `pwsh -File <path>`, and a driver whose
+		// interpreter is missing is dropped rather than advertised to fail.
+		cmd, prefix, ok := driverInvocation(path)
+		if !ok {
+			return
+		}
+		act.Command = cmd
+		act.Args = append(prefix, act.Args...)
+		out = append(out, act)
+	}
+	add("panda-camera", ledger.ActuatorProfile{
+		ID:           "hardware:camera_snap",
+		Type:         "hardware",
+		Category:     "video_sensing",
+		Interface:    "usb_camera",
+		Capabilities: []string{"camera", "snapshot", "photo", "拍照", "摄像头"},
+		Tier:         1,
+		Args:         []string{"--out", "{param:out}"},
+	})
+	add("panda-mic", ledger.ActuatorProfile{
+		ID:           "hardware:mic_record",
+		Type:         "hardware",
+		Category:     "audio_sensing",
+		Interface:    "alsa",
+		Capabilities: []string{"microphone", "record", "audio", "麦克风", "录音"},
+		Tier:         1,
+		Args:         []string{"--seconds", "{param:seconds}"},
+	})
+	add("panda-notify", ledger.ActuatorProfile{
+		ID:           "hardware:notify",
+		Type:         "software",
+		Category:     "ui_feedback",
+		Interface:    "desktop",
+		Capabilities: []string{"notify", "notification", "alert", "通知", "提醒"},
+		Tier:         1,
+		Args:         []string{"--title", "{param:title}", "--body", "{param:body}"},
+	})
+	// The computer-use pair. Both drivers carry the platform fallback chain
+	// (screencapture/grim/scrot/powershell; cliclick/xdotool/ydotool/
+	// powershell) and fail loudly with "no backend" at exec time; on Windows
+	// the resolution lands on the .ps1 sibling instead of the POSIX script,
+	// which needs git-bash there; the desktop gate above keeps the card
+	// honest about whether a session even exists.
+	add("panda-screen", ledger.ActuatorProfile{
+		ID:           "hardware:screen_capture",
+		Type:         "software",
+		Category:     "screen_sensing",
+		Interface:    "desktop",
+		Capabilities: []string{"screen", "screenshot", "capture", "gui", "desktop", "computer-use", "截屏", "屏幕", "桌面"},
+		Tier:         1,
+		// No placeholder args: the driver writes a unique timestamped file
+		// into the task's own work dir and prints its path — nothing to
+		// substitute, nothing for concurrent tasks to collide on.
+	})
+	add("panda-input", ledger.ActuatorProfile{
+		ID:           "hardware:gui_input",
+		Type:         "software",
+		Category:     "gui_control",
+		Interface:    "desktop",
+		Capabilities: []string{"gui", "click", "type", "key", "scroll", "mouse", "keyboard", "desktop", "computer-use", "点击", "输入", "按键", "鼠标", "键盘"},
+		Tier:         2,
+		// Contract: {"action": "<verb>", "args": "<verb args>"} — e.g.
+		// click "640,400", type "hello", key "ctrl+c", scroll "down,5".
+		Args: []string{"{action}", "{param:args}"},
+	})
 	return out
 }
 
@@ -212,6 +364,11 @@ func CardAgents() map[string]ledger.Agent {
 
 // InstalledBinary returns the first of an agent's known binary names that is on
 // PATH (or conventional user binary directories), or "".
+//
+// The fallback dirs are platform-specific (fallbackBinDirs) and the file check
+// is the platform's own runnability rule (executableFile): a Windows agent
+// shim is a .cmd/.exe, and os.Stat there never reports an execute bit — the
+// old stat-based check silently never matched on Windows.
 func InstalledBinary(k agents.Known) string {
 	for _, bin := range k.Binaries {
 		if bin == "" {
@@ -221,16 +378,11 @@ func InstalledBinary(k agents.Known) string {
 			return bin
 		}
 		home, _ := os.UserHomeDir()
-		candidates := []string{
-			filepath.Join(home, ".local", "bin", bin),
-			filepath.Join("/opt/homebrew/bin", bin),
-			filepath.Join("/usr/local/bin", bin),
-			filepath.Join(home, ".grok", "bin", bin),
-			filepath.Join(home, ".cargo", "bin", bin),
-		}
-		for _, cand := range candidates {
-			if st, err := os.Stat(cand); err == nil && !st.IsDir() && (st.Mode()&0o111 != 0) {
-				return bin
+		for _, dir := range fallbackBinDirs(home) {
+			for _, file := range binaryFileNames(bin) {
+				if executableFile(filepath.Join(dir, file)) {
+					return bin
+				}
 			}
 		}
 	}
@@ -280,4 +432,49 @@ func EnsureCard(path string) (ledger.Card, bool, error) {
 	}
 
 	return card, true, nil
+}
+
+// guiSessionEnv forces the desktop-session verdict — "1"/"true" claims a
+// session, "0"/"false" claims none. It exists for two crowds: operators
+// debugging why a desktop node is not advertising eyes+hands, and tests
+// running on machines whose session reality varies (CI is headless).
+const guiSessionEnv = "OPENPANDA_GUI_SESSION"
+
+// guiSessionLikely reports whether this process could plausibly reach a
+// desktop GUI session. It is a session check, not a permission check —
+// macOS TCC grants (screen recording, accessibility) are prompts only the
+// user can answer at exec time, so the drivers still fail honestly when the
+// OS refuses. What this prevents is the card advertising desktop abilities
+// on a node where no screen exists at all: peers would route GUI work here
+// and every run would fail the same way.
+func guiSessionLikely() bool {
+	switch strings.ToLower(strings.TrimSpace(os.Getenv(guiSessionEnv))) {
+	case "1", "true", "yes":
+		return true
+	case "0", "false", "no":
+		return false
+	}
+	switch runtime.GOOS {
+	case "darwin":
+		// The GUI belongs to whoever owns /dev/console. A user-domain
+		// launchd agent or terminal session running as that user sees the
+		// screen; a system daemon (uid 0, or a different user) does not.
+		out, err := exec.Command("stat", "-f", "%u", "/dev/console").Output()
+		if err != nil {
+			return false
+		}
+		uid, err := strconv.Atoi(strings.TrimSpace(string(out)))
+		return err == nil && uid == os.Getuid()
+	case "windows":
+		// Session 0 ("Services") has no desktop. Git-bash and similar may
+		// not set SESSIONNAME at all — unknown counts as present, since
+		// silently disarming a working desktop is worse than letting a
+		// driver report its own failure.
+		name := os.Getenv("SESSIONNAME")
+		return name == "" || !strings.EqualFold(name, "Services")
+	default:
+		// X11 or Wayland export the display socket name when a session
+		// exists. Headless Linux/BSD sets neither.
+		return os.Getenv("DISPLAY") != "" || os.Getenv("WAYLAND_DISPLAY") != ""
+	}
 }

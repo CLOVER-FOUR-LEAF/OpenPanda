@@ -69,6 +69,58 @@ func Dir() (string, error) {
 	return filepath.Join(home, ".local", "bin"), nil
 }
 
+// BundledDir locates a shipped sidecar directory by name ("adapters",
+// "drivers", "extensions/voice", …) the way the packaged layouts place it:
+// the working directory first (run-from-repo-root), then beside the real
+// executable — PATH installs symlink the binary, so the link is followed to
+// the packaged prefix — and finally the per-user config/home dirs an
+// install step copies into. Returns an absolute path, "" when not found.
+func BundledDir(name string) string {
+	candidates := []string{name}
+	// Walk up from the cwd like the adapter resolver does: `panda` started
+	// inside a repo subdirectory (webui/, docs/) still finds the root's
+	// drivers/ — and dev runs via `go run` get no exe-relative help at all.
+	if cwd, err := os.Getwd(); err == nil {
+		for dir := filepath.Dir(cwd); dir != filepath.Dir(dir); dir = filepath.Dir(dir) {
+			candidates = append(candidates, filepath.Join(dir, name))
+		}
+	}
+	if exe, err := os.Executable(); err == nil {
+		real := exe
+		if r, rerr := filepath.EvalSymlinks(exe); rerr == nil {
+			real = r
+		}
+		for _, base := range []string{exe, real} {
+			candidates = append(candidates,
+				filepath.Join(filepath.Dir(base), name),
+				filepath.Join(filepath.Dir(base), "..", name),
+				filepath.Join(filepath.Dir(base), "..", "share", "openpanda", name),
+			)
+		}
+	}
+	if ucd, err := os.UserConfigDir(); err == nil && ucd != "" {
+		candidates = append(candidates, filepath.Join(ucd, "openpanda", name))
+	}
+	if home, err := os.UserHomeDir(); err == nil && home != "" {
+		candidates = append(candidates,
+			filepath.Join(home, ".local", name),
+			filepath.Join(home, ".local", "share", "openpanda", name),
+			filepath.Join(home, ".openpanda", name),
+		)
+	}
+	for _, dir := range candidates {
+		st, err := os.Stat(dir)
+		if err != nil || !st.IsDir() {
+			continue
+		}
+		if abs, aerr := filepath.Abs(dir); aerr == nil {
+			return abs
+		}
+		return dir
+	}
+	return ""
+}
+
 // InPATH reports whether dir is on the current process's PATH. The install
 // flow uses it to decide whether to touch shell startup files at all.
 func InPATH(dir string) bool {

@@ -227,6 +227,7 @@ func (s *TaskStore) scanTask(row rowScanner) (Task, error) {
 	var agentSession, agentSessionNode sql.NullString
 	var scheduled int
 	var remote int
+	var screenOut int
 	var planID, stageID, needsJSON, inputsJSON, outputArt sql.NullString
 	if err := row.Scan(&t.TaskID, &t.ParentID, &t.Project, &t.Title, &t.State, &t.OwnerNode,
 		&t.AttemptID, &t.StateVersion, &chainJSON, &intent, &spec,
@@ -237,7 +238,7 @@ func (s *TaskStore) scanTask(row rowScanner) (Task, error) {
 		&planID, &stageID, &needsJSON, &inputsJSON, &outputArt,
 		&t.Transport, &t.DeadlineUnix, &t.DelegationBudget, &t.TokenBudget,
 		&agentSession, &agentSessionNode, &t.AuthSig, &t.AuthPub, &t.AuthTs,
-		&remote); err != nil {
+		&remote, &screenOut); err != nil {
 		return Task{}, err
 	}
 	decode := func(col, raw string, v any) {
@@ -274,7 +275,20 @@ func (s *TaskStore) scanTask(row rowScanner) (Task, error) {
 	t.AgentSessionID = agentSession.String
 	t.AgentSessionNode = agentSessionNode.String
 	t.Remote = remote != 0
+	t.ScreenOutput = screenOut != 0
 	return t, nil
+}
+
+// SetScreenOutput marks the task as having produced display content: its
+// output artifact rides the mesh-only rule on every node that holds this
+// row. Stamped by the executor when its run resolves a screen_sensing
+// actuator, and by each delegator hop adopting a flagged task_result.
+func (s *TaskStore) SetScreenOutput(ctx context.Context, taskID string) error {
+	if _, err := s.db.ExecContext(ctx,
+		`UPDATE tasks SET screen_output=1 WHERE task_id=?`, taskID); err != nil {
+		return fmt.Errorf("set screen_output: %w", err)
+	}
+	return nil
 }
 
 // transition moves taskID from -> to if the move is legal and owner holds
@@ -2811,7 +2825,7 @@ const taskColumns = `task_id, parent_id, project, title, state, owner_node, atte
 	priority, seq, session_id, resource_keys_json, work_dir, exec_work_dir, scheduled,
 	plan_id, stage_id, needs_json, input_artifacts_json, output_artifact,
 	transport, deadline_unix, delegation_budget, token_budget, agent_session_id, agent_session_node,
-	auth_sig, auth_pub, auth_ts, remote`
+	auth_sig, auth_pub, auth_ts, remote, screen_output`
 
 func (s *TaskStore) scanTasks(rows *sql.Rows) ([]Task, error) {
 	var out []Task
