@@ -100,7 +100,10 @@ agents:
 #   # 该节点必须有真实图形会话（launchd 用户域/桌面登录；systemd --system
 #   # 或 SSH 会话看不到屏幕）。macOS 还需在系统设置里给终端/panda 授予
 #   # 屏幕录制与辅助功能权限；Linux 需要 xdotool(X11)/ydotool(Wayland)；
-#   # Windows 走内置 powershell 路径。
+#   # Windows 走内置 powershell 路径（自动探测会解析同目录的
+#   # panda-screen.ps1 / panda-input.ps1，手写卡片时 command 填 "pwsh"，
+#   # args 前置 ["-NoProfile","-NonInteractive","-ExecutionPolicy","Bypass",
+#   # "-File","<drivers 目录>\\panda-screen.ps1"]）。
 #   - id: "hardware:screen_capture"
 #     type: "software"
 #     category: "screen_sensing"   # 屏幕内容的专用类目：它的产物在网内

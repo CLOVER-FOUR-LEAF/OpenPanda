@@ -27,6 +27,11 @@
 #   Wayland : ydotool + wtype (best effort; scroll unsupported)
 #   Windows : powershell SendInput/SendKeys (git-bash / MSYS)
 #
+# On Windows the capability card resolves the sibling panda-input.ps1 instead
+# of this script — a stock Windows node has no MSYS shell, and CreateProcess
+# cannot exec a shebang script. This script's Windows branch stays for manual
+# git-bash use.
+#
 # Exit codes: 0 ok · 2 bad arguments · 3 no input backend · 4 verb
 # unsupported on this backend · 1 action error.
 
@@ -88,7 +93,11 @@ normalize_key_spec() {
             *) break ;;
         esac
     done
-    # canonical names for the backends that take names
+    # canonical names for the backends that take names. The backends match
+    # these names case-sensitively (mac_key/win_key_send), so every documented
+    # key must be spelled out here — an unmapped "tab" or "f5" fell through as
+    # lowercase and died as "unknown key" on macOS / typed as literal letters
+    # on Windows.
     case $spec in
         return|enter) key=Return ;;
         esc)          key=Escape ;;
@@ -99,6 +108,11 @@ normalize_key_spec() {
         pgdn)         key=Page_Down ;;
         up)    key=Up ;; down)  key=Down ;;
         left)  key=Left ;; right) key=Right ;;
+        tab)          key=Tab ;;
+        home)         key=Home ;;
+        end)          key=End ;;
+        f1|f2|f3|f4|f5|f6|f7|f8|f9|f10|f11|f12)
+                      key=$(printf '%s' "$spec" | tr 'a-z' 'A-Z') ;;
         *)            key=$spec ;;
     esac
     [ -n "$key" ] || { echo "panda-input: empty key spec" >&2; exit 2; }

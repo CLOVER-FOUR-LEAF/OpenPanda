@@ -15,6 +15,11 @@
 #   X11     : gnome-screenshot, scrot, maim, ImageMagick import, ffmpeg x11grab
 #   Windows : powershell System.Drawing capture (git-bash / MSYS)
 #
+# On Windows the capability card resolves the sibling panda-screen.ps1 instead
+# of this script — a stock Windows node has no MSYS shell, and CreateProcess
+# cannot exec a shebang script. This script's Windows branch stays for manual
+# git-bash use.
+#
 # The driver captures the GRAPHICAL session of the user context it runs
 # under. A service without a console session (launchd system domain,
 # systemd --system, Windows Session 0) sees no screen — advertise this

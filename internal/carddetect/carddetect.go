@@ -63,8 +63,9 @@ func DetectCard() ledger.Card {
 	card.Agents = CardAgents()
 	// Actuators: declare the bundled reference drivers that exist — the
 	// shipped drivers/ dir does nothing on its own until the card advertises
-	// it. Command is the resolved path, so PruneUnavailableActuators cannot
-	// drop what this just found.
+	// it. Command is the resolved invocation (the driver itself on unix, a
+	// PowerShell host on Windows), so PruneUnavailableActuators cannot drop
+	// what this just found.
 	card.Actuators = DetectActuators()
 	return card
 }
@@ -171,33 +172,40 @@ const driversDirEnv = "OPENPANDA_DRIVERS_DIR"
 // the same exclusivity for isolation) — then PATH (operator-installed
 // copies win), then the shipped drivers/ tree: repo checkout, the packaged
 // layout beside the executable, the dirs install copies into. Returns the
-// command to put on the card: the bare name when PATH resolves it, the
-// absolute driver path otherwise; "" when absent. An absolute result
-// survives PruneUnavailableActuators for the same reason an on-PATH name
-// does — both resolve through exec.LookPath at exec time.
+// resolved command: the bare name when PATH resolves it, the platform's
+// driver file otherwise (the bare script on unix, drivers/panda-*.ps1 on
+// Windows — see driverFileNames); "" when absent. Both forms survive
+// PruneUnavailableActuators: they resolve through exec.LookPath at exec
+// time, the .ps1 through the PowerShell host driverInvocation names.
 func resolveDriver(name string) string {
 	if d := strings.TrimSpace(os.Getenv(driversDirEnv)); d != "" {
-		if cand := filepath.Join(d, name); executableFile(cand) {
-			return cand
-		}
-		return ""
+		return findDriverFile(d, name)
 	}
 	if _, err := exec.LookPath(name); err == nil {
 		return name
 	}
 	if d := install.BundledDir("drivers"); d != "" {
-		if cand := filepath.Join(d, name); executableFile(cand) {
-			return cand
-		}
+		return findDriverFile(d, name)
 	}
 	return ""
 }
 
-// executableFile reports whether path names an existing non-directory file
-// with any execute bit set.
-func executableFile(path string) bool {
-	st, err := os.Stat(path)
-	return err == nil && !st.IsDir() && st.Mode()&0o111 != 0
+// findDriverFile returns the first runnable file for driver `name` in dir,
+// trying the platform's file names in preference order (driverFileNames).
+// The result is absolute: the card's command is exec'd with the task's work
+// dir as cwd, so a relative OPENPANDA_DRIVERS_DIR would otherwise resolve
+// against the wrong directory at run time.
+func findDriverFile(dir, name string) string {
+	for _, file := range driverFileNames(name) {
+		cand := filepath.Join(dir, file)
+		if executableFile(cand) {
+			if abs, err := filepath.Abs(cand); err == nil {
+				return abs
+			}
+			return cand
+		}
+	}
+	return ""
 }
 
 // DetectActuators declares actuators for the bundled reference drivers that
@@ -225,10 +233,20 @@ func DetectActuators() []ledger.ActuatorProfile {
 		if act.Interface == "desktop" && !desktop {
 			return
 		}
-		if cmd := resolveDriver(name); cmd != "" {
-			act.Command = cmd
-			out = append(out, act)
+		path := resolveDriver(name)
+		if path == "" {
+			return
 		}
+		// The card carries an invocation, not a bare file path: on Windows a
+		// shipped .ps1 resolves to `pwsh -File <path>`, and a driver whose
+		// interpreter is missing is dropped rather than advertised to fail.
+		cmd, prefix, ok := driverInvocation(path)
+		if !ok {
+			return
+		}
+		act.Command = cmd
+		act.Args = append(prefix, act.Args...)
+		out = append(out, act)
 	}
 	add("panda-camera", ledger.ActuatorProfile{
 		ID:           "hardware:camera_snap",
@@ -259,9 +277,10 @@ func DetectActuators() []ledger.ActuatorProfile {
 	})
 	// The computer-use pair. Both drivers carry the platform fallback chain
 	// (screencapture/grim/scrot/powershell; cliclick/xdotool/ydotool/
-	// powershell) and fail loudly with "no backend" at exec time; the
-	// desktop gate above keeps the card honest about whether a session
-	// even exists.
+	// powershell) and fail loudly with "no backend" at exec time; on Windows
+	// the resolution lands on the .ps1 sibling instead of the POSIX script,
+	// which needs git-bash there; the desktop gate above keeps the card
+	// honest about whether a session even exists.
 	add("panda-screen", ledger.ActuatorProfile{
 		ID:           "hardware:screen_capture",
 		Type:         "software",
@@ -345,6 +364,11 @@ func CardAgents() map[string]ledger.Agent {
 
 // InstalledBinary returns the first of an agent's known binary names that is on
 // PATH (or conventional user binary directories), or "".
+//
+// The fallback dirs are platform-specific (fallbackBinDirs) and the file check
+// is the platform's own runnability rule (executableFile): a Windows agent
+// shim is a .cmd/.exe, and os.Stat there never reports an execute bit — the
+// old stat-based check silently never matched on Windows.
 func InstalledBinary(k agents.Known) string {
 	for _, bin := range k.Binaries {
 		if bin == "" {
@@ -354,16 +378,11 @@ func InstalledBinary(k agents.Known) string {
 			return bin
 		}
 		home, _ := os.UserHomeDir()
-		candidates := []string{
-			filepath.Join(home, ".local", "bin", bin),
-			filepath.Join("/opt/homebrew/bin", bin),
-			filepath.Join("/usr/local/bin", bin),
-			filepath.Join(home, ".grok", "bin", bin),
-			filepath.Join(home, ".cargo", "bin", bin),
-		}
-		for _, cand := range candidates {
-			if st, err := os.Stat(cand); err == nil && !st.IsDir() && (st.Mode()&0o111 != 0) {
-				return bin
+		for _, dir := range fallbackBinDirs(home) {
+			for _, file := range binaryFileNames(bin) {
+				if executableFile(filepath.Join(dir, file)) {
+					return bin
+				}
 			}
 		}
 	}

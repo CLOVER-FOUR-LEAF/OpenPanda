@@ -106,7 +106,7 @@ OpenPanda 自己不执行长程任务，而是委派给设备上安装的 agent 
 
 **能让它看屏幕、点鼠标吗（computer use）？**
 
-能，但有明确的边界。带桌面会话的节点会广告 `hardware:screen_capture`（截屏）与 `hardware:gui_input`（点击/输入/按键/滚动，tier 2 因不可逆）两个执行器——`panda detect` 自动探测 bundled `drivers/panda-screen`、`drivers/panda-input`；无头守护进程（没有 GUI 会话）不广告这两项，避免把 GUI 任务路由到必败节点。典型链路是「截屏任务 → 执行节点的 agent 读取截图理解画面 → `gui_input` 动作 → 截图产物回传」：视觉理解发生在执行节点的 agent 内部，编排模型本身不看图。截图产物可被 `panda task artifact <id>` 或控制台任务详情的产物区预览/下载。安全默认值：屏幕内容只在 mesh 档链路上移动——非 mesh 来源的截屏任务在准入即拒，产物拉取/推送也只放给 mesh 对端（`network.trust.send.guarded.screen` 是同所有者场景的显式开关）。macOS 上驱动还会要求系统设置里的「录屏」「辅助功能」授权，缺失时任务如实报错而非静默失败。
+能，但有明确的边界。带桌面会话的节点会广告 `hardware:screen_capture`（截屏）与 `hardware:gui_input`（点击/输入/按键/滚动，tier 2 因不可逆）两个执行器——`panda detect` 自动探测 bundled `drivers/panda-screen`、`drivers/panda-input`（Windows 上解析同目录的 `panda-*.ps1`，经 `pwsh -File` 运行，无需 git-bash）；无头守护进程（没有 GUI 会话）不广告这两项，避免把 GUI 任务路由到必败节点。典型链路是「截屏任务 → 执行节点的 agent 读取截图理解画面 → `gui_input` 动作 → 截图产物回传」：视觉理解发生在执行节点的 agent 内部，编排模型本身不看图。截图产物可被 `panda task artifact <id>` 或控制台任务详情的产物区预览/下载。安全默认值：屏幕内容只在 mesh 档链路上移动——非 mesh 来源的截屏任务在准入即拒，产物拉取/推送也只放给 mesh 对端（`network.trust.send.guarded.screen` 是同所有者场景的显式开关）。macOS 上驱动还会要求系统设置里的「录屏」「辅助功能」授权，缺失时任务如实报错而非静默失败。
 
 ## 数据与维护
 

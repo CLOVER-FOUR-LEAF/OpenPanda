@@ -4,8 +4,10 @@ package carddetect_test
 
 import (
 	"os"
+	"os/exec"
 	"path/filepath"
 	"runtime"
+	"strings"
 	"testing"
 
 	"github.com/Xustalis/OpenPanda/internal/agents"
@@ -95,19 +97,73 @@ func TestCardAgentsDoNotPreSelectTheApprovalGate(t *testing.T) {
 	}
 }
 
-// stubDriverDir builds a fake drivers/ dir with the named scripts and points
-// the probe at it via OPENPANDA_DRIVERS_DIR — the env seam resolveDriver
-// honors before PATH and the bundled layout.
+// driverFileName is the file name a driver resolves under on this platform:
+// the bare script on unix, the PowerShell entry point on Windows (the POSIX
+// script needs git-bash there and CreateProcess cannot exec a shebang).
+func driverFileName(name string) string {
+	if runtime.GOOS == "windows" {
+		return name + ".ps1"
+	}
+	return name
+}
+
+// stubDriverDir builds a fake drivers/ dir with the named drivers (under this
+// platform's file name) and points the probe at it via OPENPANDA_DRIVERS_DIR —
+// the env seam resolveDriver honors before PATH and the bundled layout.
 func stubDriverDir(t *testing.T, names ...string) string {
 	t.Helper()
 	dir := t.TempDir()
 	for _, n := range names {
-		if err := os.WriteFile(filepath.Join(dir, n), []byte("#!/bin/sh\n"), 0o755); err != nil {
+		if err := os.WriteFile(filepath.Join(dir, driverFileName(n)), []byte("#!/bin/sh\n"), 0o755); err != nil {
 			t.Fatal(err)
 		}
 	}
 	t.Setenv("OPENPANDA_DRIVERS_DIR", dir)
 	return dir
+}
+
+// requireDriverHost skips driver-resolution tests on a Windows host with no
+// PowerShell: a .ps1 driver is deliberately not advertised there (the card
+// would name an interpreter the node lacks), so there is nothing to assert.
+func requireDriverHost(t *testing.T) {
+	t.Helper()
+	if runtime.GOOS != "windows" {
+		return
+	}
+	if _, err := exec.LookPath("pwsh"); err == nil {
+		return
+	}
+	if _, err := exec.LookPath("powershell"); err == nil {
+		return
+	}
+	t.Skip("no PowerShell host on this Windows runner — .ps1 drivers are not advertised by design")
+}
+
+// assertDriverInvocation checks that a detected actuator carries an invocation
+// that can actually run on this platform: the driver file itself on unix, a
+// PowerShell host with `-File <driver>` on Windows.
+func assertDriverInvocation(t *testing.T, act ledger.ActuatorProfile, dir, name string) {
+	t.Helper()
+	driver := filepath.Join(dir, driverFileName(name))
+	if runtime.GOOS != "windows" {
+		if act.Command != driver {
+			t.Errorf("%s command = %q, want the resolved driver path %q", act.ID, act.Command, driver)
+		}
+		return
+	}
+	if strings.EqualFold(filepath.Ext(act.Command), ".ps1") {
+		t.Errorf("%s command = %q — a .ps1 is not directly exec'able on Windows", act.ID, act.Command)
+	}
+	found := false
+	for i, a := range act.Args {
+		if a == "-File" && i+1 < len(act.Args) && act.Args[i+1] == driver {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Errorf("%s args = %v, want `-File %s` among them", act.ID, act.Args, driver)
+	}
 }
 
 func actuatorIDs(acts []ledger.ActuatorProfile) map[string]ledger.ActuatorProfile {
@@ -130,6 +186,7 @@ func guiSession(t *testing.T, present bool) {
 }
 
 func TestDetectActuatorsFromDriversDir(t *testing.T) {
+	requireDriverHost(t)
 	guiSession(t, true)
 	dir := stubDriverDir(t, "panda-screen", "panda-input")
 
@@ -141,9 +198,7 @@ func TestDetectActuatorsFromDriversDir(t *testing.T) {
 	if screen.Tier != 1 {
 		t.Errorf("screen_capture tier = %d, want 1 (observation is reversible)", screen.Tier)
 	}
-	if screen.Command != filepath.Join(dir, "panda-screen") {
-		t.Errorf("screen_capture command = %q, want the resolved driver path", screen.Command)
-	}
+	assertDriverInvocation(t, screen, dir, "panda-screen")
 
 	input, ok := acts["hardware:gui_input"]
 	if !ok {
@@ -176,6 +231,7 @@ func TestDetectActuatorsEmptyWhenNoDrivers(t *testing.T) {
 // when the driver scripts exist, because every routed task would fail there.
 // Hardware actuators are unaffected: a camera needs no display.
 func TestDesktopActuatorsRequireGuiSession(t *testing.T) {
+	requireDriverHost(t)
 	guiSession(t, false)
 	stubDriverDir(t, "panda-screen", "panda-input", "panda-notify", "panda-camera")
 
@@ -195,6 +251,7 @@ func TestDesktopActuatorsRequireGuiSession(t *testing.T) {
 // detection just declared — a detected path that prunes away is an actuator
 // the card advertises but can never run.
 func TestDetectedActuatorsSurvivePrune(t *testing.T) {
+	requireDriverHost(t)
 	guiSession(t, true)
 	stubDriverDir(t, "panda-screen")
 	card := ledger.Card{Actuators: carddetect.DetectActuators()}
